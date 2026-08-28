@@ -1400,10 +1400,13 @@ async function leave(silent) {
 
 async function connectVideo() {
   let data, error;
-  try { ({ data, error } = await sb.rpc("livekit_token", { p_room: room.room_id })); }
+  // всегда указываем тип комнаты: иначе вызов неоднозначен, если в базе осталась старая версия функции
+  try { ({ data, error } = await sb.rpc("livekit_token", { p_room: room.room_id, p_kind: "main" })); }
   catch (e) { error = e; }
   if (error || !data || !data.token) {
-    $("videoHint").textContent = "Видео недоступно — играйте с созвоном в Discord.";
+    const why = (error && error.message) || (data && data.error) || "сервер не выдал доступ";
+    $("videoHint").innerHTML = `Видео не подключилось (${why}). ` +
+      `<button class="ghost" style="width:auto;display:inline-block;margin-left:6px" onclick="connectVideo()">Повторить</button>`;
     return;
   }
   try {
@@ -1423,7 +1426,12 @@ async function connectVideo() {
     });
     attachAllTracks(); applyAV();
   } catch (e) {
-    $("videoHint").textContent = "Видео: " + e.message;
+    const denied = /permission|NotAllowed|Denied/i.test(e.name + " " + e.message);
+    $("videoHint").innerHTML = denied
+      ? `Браузер не пустил к камере и микрофону. Разреши доступ в адресной строке и нажми ` +
+        `<button class="ghost" style="width:auto;display:inline-block" onclick="connectVideo()">Подключить</button>`
+      : `Видео: ${e.message} ` +
+        `<button class="ghost" style="width:auto;display:inline-block;margin-left:6px" onclick="connectVideo()">Повторить</button>`;
   }
 }
 function attachTrackTo(uid, participant) {
