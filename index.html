@@ -864,6 +864,7 @@ async function onGame(g) {
   if (deaths > lastDeaths) { if (!phaseChanged || g.phase === "morning" || g.phase === "lastword") sfx("death"); }
   lastDeaths = deaths;
   applyAV();          // право говорить меняется и при смене спикера внутри дня
+  muteForbiddenVoices();
   render();
   renderLog();
 }
@@ -1022,6 +1023,22 @@ function ruErr(e) {
 }
 
 // --- Кто сейчас имеет право говорить ---
+// право голоса конкретного игрока: по нему слушатель сам глушит чужой звук,
+// чтобы тишину не приходилось доверять чужому клиенту
+function speechAllowedFor(uid) {
+  if (!game || game.winner) return true;
+  const narrator = players.find(p => p.uid === uid && p.is_host) && room.mode === "host"
+    && !seatsG.some(s => s.uid === uid);
+  if (narrator) return true;
+  const seat = seatsG.find(s => s.uid === uid);
+  const ph = game.phase;
+  if (ph === "lastword") return game.state.lastword === uid;
+  if (!seat || !seat.alive) return false;
+  if (ph === "night" || ph === "zeronight") return false;
+  if (ph === "freetalk") return true;
+  if (ph === "day" && preset && preset.speech_order) return currentSpeaker() === uid;
+  return true;
+}
 function speechAllowed() {
   if (!game || game.winner) return true;             // после игры говорят все
   if (amNarrator()) return true;                     // ведущий говорит всегда
@@ -1041,7 +1058,9 @@ function currentSpeaker() {
 }
 
 let avState = { mic:null, cam:null, mMic:null, mCam:null };
+const audioEls = new Map();
 function applyAV() {
+  muteForbiddenVoices();                 // чужие голоса глушим независимо от своего подключения
   if (!lk.room || !lk.connected) return;
   const allowed = speechAllowed();
   const wantMic = !!(allowed && micOn), wantCam = !!camOn;
@@ -1466,6 +1485,7 @@ async function connectVideo() {
   }
   try {
     lk.room = new LivekitClient.Room({ adaptiveStream:false, dynacast:false });
+    lk.room.on("reconnected", () => { avState = { mic:null, cam:null, mMic:null, mCam:null }; applyAV(); });
     lk.room.on("disconnected", () => {
       lk.connected = false;
       $("videoHint").innerHTML = "Связь с видеосервером прервалась. " +
@@ -1515,8 +1535,15 @@ function attachTrackTo(uid, participant) {
     if (ph) ph.style.display = "";
   }
   participant.audioTrackPublications.forEach(pub => {
-    if (pub.track && !participant.isLocal) pub.track.attach();
+    if (pub.track && !participant.isLocal) {
+      const el = pub.track.attach();
+      audioEls.set(uid, el);
+      el.muted = !speechAllowedFor(uid);
+    }
   });
+}
+function muteForbiddenVoices() {
+  audioEls.forEach((el, uid) => { el.muted = !speechAllowedFor(uid); });
 }
 function attachAllTracks() {
   if (!lk.room) return;
