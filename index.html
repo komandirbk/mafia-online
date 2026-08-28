@@ -794,6 +794,11 @@ async function tileClick(uid) {
     if (r === "mafia") kind = "mafia_kill";
     else if (r === "don") kind = donMode === "kill" ? "mafia_kill" : "don_check";
     else if (r === "sheriff") kind = "sheriff_check";
+    // проверять себя нельзя — клик по своей карточке в режиме проверки игнорируем
+    if (uid === me.id && (kind === "sheriff_check" || kind === "don_check")) {
+      $("phaseSub").textContent = "⚠ Себя проверять нельзя";
+      return;
+    }
     else if (r === "doctor") kind = "doctor_heal";
     else if (r === "maniac") kind = "maniac_kill";
     else if (r === "lover") kind = "lover_block";
@@ -810,6 +815,7 @@ function ruErr(e) {
     wrong_phase:"Не та фаза", forbidden:"Недоступно твоей роли", dead:"Ты выбыл",
     not_host:"Только ведущий комнаты может это делать", not_your_turn:"Сейчас говорит другой игрок",
     already_nominated:"Ты уже выставил игрока — выбор окончательный",
+    self_check:"Себя проверять нельзя",
     skip_not_allowed:"Выстрел в воздух запрещён настройками", self_heal_used:"Себя можно лечить только раз за игру" }[e] || e;
 }
 
