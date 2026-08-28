@@ -1411,6 +1411,11 @@ async function connectVideo() {
   }
   try {
     lk.room = new LivekitClient.Room({ adaptiveStream:true, dynacast:true });
+    lk.room.on("disconnected", () => {
+      lk.connected = false;
+      $("videoHint").innerHTML = "Связь с видеосервером прервалась. " +
+        `<button class="ghost" style="width:auto;display:inline-block" onclick="connectVideo()">Подключить заново</button>`;
+    });
     await lk.room.connect(data.url, data.token);
     await lk.room.localParticipant.enableCameraAndMicrophone();
     lk.connected = true;
