@@ -61,6 +61,16 @@
   .log .le b { color:var(--text); }
   .log .le time { color:var(--gold); font-variant-numeric:tabular-nums; margin-right:8px; }
   .log .le.dead b { color:var(--accent); }
+  .tile.offline { filter:grayscale(.7); opacity:.6; }
+  .tile .ctl { position:absolute; top:6px; right:6px; display:flex; gap:4px; z-index:4; }
+  .tile .ctl button { width:auto; padding:2px 7px; font-size:12px; background:rgba(0,0,0,.7); color:var(--muted);
+    border:1px solid var(--divider); border-radius:8px; }
+  .tile .ctl button:hover { color:var(--text); border-color:var(--gold); }
+  .stats { display:flex; gap:14px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-bottom:12px; }
+  .stats b { color:var(--gold); }
+  .board { background:var(--elevated); border-radius:10px; padding:10px 12px; font-size:13px; margin-top:10px; }
+  .board .row2 { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid var(--divider); }
+  .board .row2:last-child { border:0; }
   .mode-tag { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); background:var(--elevated); border-radius:99px; padding:4px 10px; }
   .players { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
   .tile { position:relative; background:var(--elevated); border:2px solid var(--divider); border-radius:14px; aspect-ratio:4/3; overflow:hidden; display:flex; align-items:center; justify-content:center; }
@@ -129,6 +139,7 @@
       </div>
     </div>
     <input id="nickname" type="hidden">
+    <div class="stats" id="myStats"></div>
     <div id="joinBlock">
       <input id="joinCode" maxlength="6" placeholder="Код комнаты (6 символов)" style="text-transform:uppercase">
       <button onclick="join()">Войти в комнату</button>
@@ -222,7 +233,11 @@
     <div class="role-big" id="endEmoji"></div>
     <div class="role-name" id="endTitle"></div>
     <div class="team-list" id="endRoles"></div>
-    <button onclick="location.href=location.pathname">В новое лобби</button>
+    <div class="board" id="endBoard"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="rematchBtn" style="display:none" onclick="rematch()">🔄 Реванш — тем же составом</button>
+      <button class="ghost" onclick="closeEnd()">К лобби</button>
+    </div>
   </div>
 </div>
 
@@ -249,15 +264,15 @@ const PHASE_TITLE = {
 const PRESETS = {
   sport: { name:"Спортивная (ФИИМ)", kind:"sport", day_seconds_per_player:60, last_word_seconds:60,
     zero_night_seconds:60, night_step_seconds:25, tie:"revoteThenJointDeath", can_nominate_self:false,
-    allow_mafia_skip_shot:false, skip_zero_night:false, speech_order:true, reveal_on_death:false,
+    allow_mafia_skip_shot:false, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4,
     roles:{don:true, sheriff:true, doctor:false, maniac:false, lover:false} },
   yard: { name:"Дворовая", kind:"yard", day_seconds_per_player:45, last_word_seconds:30,
     zero_night_seconds:30, night_step_seconds:30, tie:"revoteThenNobody", can_nominate_self:true,
-    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:false, reveal_on_death:false,
+    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:false, reveal_on_death:false, max_fouls:5,
     roles:{don:true, sheriff:true, doctor:true, maniac:false, lover:false} },
   extended: { name:"Расширенная", kind:"extended", day_seconds_per_player:60, last_word_seconds:60,
     zero_night_seconds:60, night_step_seconds:30, tie:"revoteThenAllRaise", can_nominate_self:false,
-    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:true, reveal_on_death:false,
+    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4,
     roles:{don:true, sheriff:true, doctor:true, maniac:true, lover:false} }
 };
 const TIE_RU = { revoteThenNobody:"переголосовка, затем никто не выбывает",
@@ -273,6 +288,7 @@ let tickTimer=null, clockTimer=null, myActions={}, hostRoles={};
 let codeShown=false, preset=null, soundOn=localStorage.getItem("sound") !== "off", lastDeaths=0;
 let micOn = localStorage.getItem("micOn") !== "0", camOn = localStorage.getItem("camOn") !== "0";
 let lkMafia = { room:null, connected:false };
+let online = new Set(), speaking = new Set();
 
 const $=id=>document.getElementById(id);
 
@@ -403,6 +419,7 @@ async function afterLogin() {
 function showHome() {
   $("nickname").value = myNick;
   $("meNick").textContent = myNick;
+  loadStats();
   $("authView").style.display = "none";
   $("nickOverlay").style.display = "none";
   $("homeView").style.display = "block";
@@ -471,6 +488,7 @@ async function enterRoom(r) {
   subscribe();
   connectVideo();
   await checkGame();
+  keepAwake(true);
   tickTimer = setInterval(gameTick, 5000);
   clockTimer = setInterval(renderClock, 1000);
 }
@@ -539,6 +557,7 @@ function renderSettings() {
     num("Ночь, сек на роль", "night_step_seconds", 10, 120),
     num("Последнее слово, сек", "last_word_seconds", 10, 180),
     num("Нулевая ночь, сек", "zero_night_seconds", 10, 180),
+    num("Фолов до удаления", "max_fouls", 2, 10),
     chk("Можно выставлять себя", "can_nominate_self", preset.can_nominate_self),
     chk("Мафия может стрелять в воздух", "allow_mafia_skip_shot", preset.allow_mafia_skip_shot),
     chk("Пропускать нулевую ночь", "skip_zero_night", preset.skip_zero_night),
@@ -574,14 +593,40 @@ async function updateCompPreview() {
 
 function subscribe() {
   if (channel) sb.removeChannel(channel);
-  channel = sb.channel("room:" + room.room_id)
+  channel = sb.channel("room:" + room.room_id, { config: { presence: { key: me.id } } })
+    .on("presence", { event: "sync" }, () => {
+      online = new Set(Object.keys(channel.presenceState() || {}));
+      render();
+    })
     .on("postgres_changes",{event:"*",schema:"public",table:"room_players",filter:"room_id=eq."+room.room_id}, refreshPlayers)
     .on("postgres_changes",{event:"*",schema:"public",table:"online_games",filter:"room_id=eq."+room.room_id}, p => { if (p.new?.id) onGame(p.new); })
     .on("postgres_changes",{event:"UPDATE",schema:"public",table:"rooms",filter:"id=eq."+room.room_id}, p => {
       if (p.new.preset) { preset = p.new.preset; renderSettings(); }
       if (p.new.status === "finished" && !game) { leave(true); }
     })
-    .subscribe();
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED") await channel.track({ uid: me.id, at: Date.now() });
+    });
+}
+
+async function kick(uid, nick) {
+  if (!confirmKick(nick)) return;
+  const { data } = await sb.rpc("kick_player", { p_room: room.room_id, p_uid: uid });
+  if (data && data.error) $("phaseSub").textContent = "⚠ " + ruErr(data.error);
+  else { sfx("tick"); refreshPlayers(); gameTick(); }
+}
+let kickPending = null;
+function confirmKick(nick) {
+  if (kickPending === nick) { kickPending = null; return true; }
+  kickPending = nick;
+  $("phaseSub").textContent = `Нажми ещё раз, чтобы удалить ${nick} из игры`;
+  setTimeout(() => { if (kickPending === nick) { kickPending = null; render(); } }, 4000);
+  return false;
+}
+async function foul(uid, delta) {
+  const { data } = await sb.rpc("add_foul", { p_game: game.id, p_uid: uid, p_delta: delta });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  sfx("tick"); await fetchSeats(); render();
 }
 
 async function checkGame() {
@@ -745,6 +790,7 @@ function ruErr(e) {
   return { self:"Себя выставить нельзя (настройка выключена)", same_heal:"Нельзя лечить одного дважды подряд",
     not_candidate:"Голосовать можно только за кандидата", bad_target:"Цель недоступна",
     wrong_phase:"Не та фаза", forbidden:"Недоступно твоей роли", dead:"Ты выбыл",
+    not_host:"Только ведущий комнаты может это делать", not_your_turn:"Сейчас говорит другой игрок",
     skip_not_allowed:"Выстрел в воздух запрещён настройками", self_heal_used:"Себя можно лечить только раз за игру" }[e] || e;
 }
 
@@ -848,6 +894,8 @@ function renderLog() {
     else if (e.t === "revote") text = "Ничья — переголосовка";
     else if (e.t === "tie_nobody") text = "Ничья и после переголосовки — никто не выбывает";
     else if (e.t === "allraise") text = `Подъём всех: «за» ${e.yes} из ${e.alive}`;
+    else if (e.t === "foul") text = `⚠ <b>${e.who}</b> получает фол (${e.n})`;
+    else if (e.t === "end") text = "🏁 " + ({red:"Победа мирных", black:"Победа мафии", maniac:"Победил маньяк"}[e.winner] || "Игра окончена");
     else if (e.t === "death") text = `☠ <b>${e.who}</b> ${CAUSE_LOG[e.cause] || e.cause}` + (e.role ? ` (${(ROLE_RU[e.role]||[e.role])[0]})` : "");
     else return "";
     return `<div class="le${e.t === "death" ? " dead" : ""}"><time>${e.at || ""}</time>${text}</div>`;
@@ -969,6 +1017,8 @@ function render() {
     const host = players.find(x => x.uid === p.uid && x.is_host);
     const badges = [];
     if (p.narrator) badges.push('<span class="badge nom">ведущий 🎙</span>');
+    if (online.size && !online.has(p.uid)) badges.push('<span class="badge">📴 нет связи</span>');
+    if (p.fouls) badges.push(`<span class="badge mafi">⚠ фолы: ${p.fouls}</span>`);
     if (game && game.phase === "zeronight" && myRole && myRole.team &&
         myRole.team.some(t => t.nickname === p.nickname && t.seat === p.seat)) {
       badges.push('<span class="badge mafi">🤝 своя</span>');
@@ -992,13 +1042,21 @@ function render() {
     if (p.uid === me.id) cls.push("me");
     if (game && game.phase === "day" && preset && preset.speech_order && currentSpeaker() === p.uid) cls.push("turn");
     if (game && game.phase === "lastword" && game.state.lastword === p.uid) cls.push("turn");
+    if (speaking.has(p.uid)) cls.push("speaking");
+    if (online.size && !online.has(p.uid)) cls.push("offline");
     if (game && game.phase === "voting" && cands.includes(p.uid)) cls.push("candidate");
     const clickable = inGame && my && my.alive && p.alive && (
       (game.phase === "day" && p.uid !== me.id) ||
       (game.phase === "voting" && cands.includes(p.uid)) ||
       (game.phase === "night"));
     if (clickable) cls.push("clickable");
+    const hostCtl = amHost() && p.uid !== me.id && !p.narrator;
+    const ctl = hostCtl ? `<div class="ctl" onclick="event.stopPropagation()">` +
+      (inGame ? `<button onclick="foul('${p.uid}',1)" title="Фол">⚠</button>` +
+                `<button onclick="foul('${p.uid}',-1)" title="Снять фол">−</button>` : "") +
+      `<button onclick="kick('${p.uid}','${(p.nickname||"").replace(/'/g,"")}')" title="Удалить из игры">✕</button></div>` : "";
     return `<div class="${cls.join(" ")}" id="tile-${p.uid}" ${clickable ? `onclick="tileClick('${p.uid}')"` : ""}>
+      ${ctl}
       <div class="ph">${(p.nickname||"?").slice(0,1).toUpperCase()}</div>
       <div class="badges">${badges.join("")}</div>
       <div class="name">${host ? '<span class="crown">♛</span> ' : ""}${p.seat ? "#"+p.seat+" " : ""}${p.nickname}${p.uid===me.id?" (ты)":""}</div>
@@ -1010,7 +1068,9 @@ function render() {
   if (game && game.winner) showEnd();
 }
 
+let endShown = false;
 async function showEnd() {
+  if (endShown) return; endShown = true;
   const win = { red:["🟥","Победа мирных!"], black:["⬛","Победа мафии!"], maniac:["🔪","Победил маньяк!"] }[game.winner] || ["🏁","Игра окончена"];
   $("endEmoji").textContent = win[0];
   $("endTitle").textContent = win[1];
@@ -1018,8 +1078,49 @@ async function showEnd() {
   const rmap = {}; (roles||[]).forEach(r => rmap[r.uid] = r.role);
   $("endRoles").innerHTML = seatsG.map(s =>
     `#${s.seat} ${s.nickname} — ${(ROLE_RU[rmap[s.uid]]||["?"])[0]} ${s.alive ? "" : "☠"}`).join("<br>");
+  $("rematchBtn").style.display = amHost() ? "block" : "none";
+  const { data: st } = await sb.rpc("my_stats");
+  if (st) $("endBoard").innerHTML = `Твоя статистика: игр <b>${st.games}</b> · побед <b>${st.wins}</b>` +
+    ` (город ${st.wins_red}, мафия ${st.wins_black}${st.wins_maniac ? ", маньяк " + st.wins_maniac : ""})`;
+  loadStats();
   $("endOverlay").style.display = "flex";
 }
+function closeEnd() { $("endOverlay").style.display = "none"; }
+async function rematch() {
+  $("rematchBtn").disabled = true;
+  const { data } = await sb.rpc("restart_game", { p_room: room.room_id });
+  if (data && data.error) { $("endBoard").textContent = "⚠ " + data.error; $("rematchBtn").disabled = false; return; }
+  game = null; endShown = false; myRole = null; seatsG = []; hostRoles = {};
+  closeEnd(); render(); renderSettings();
+  const { data: sg } = await sb.rpc("start_game", { p_room: room.room_id });
+  if (sg && sg.error) $("phaseSub").textContent = "⚠ " + ruErr(sg.error);
+  $("rematchBtn").disabled = false;
+}
+
+// --- Статистика игрока ---
+async function loadStats() {
+  const { data } = await sb.rpc("my_stats");
+  if (!data) return;
+  const winRate = data.games ? Math.round(100 * data.wins / data.games) : 0;
+  $("myStats").innerHTML = data.games
+    ? `Игр: <b>${data.games}</b> · Побед: <b>${data.wins}</b> (${winRate}%) · за город <b>${data.wins_red}</b> · за мафию <b>${data.wins_black}</b>` +
+      (data.wins_maniac ? ` · маньяком <b>${data.wins_maniac}</b>` : "")
+    : "Ещё нет сыгранных партий — сыграй первую!";
+}
+
+// --- Экран не гаснет во время игры ---
+let wakeLock = null;
+async function keepAwake(on) {
+  try {
+    if (on && !wakeLock && "wakeLock" in navigator) {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && room) keepAwake(true);
+});
 
 function copyLink() {
   navigator.clipboard.writeText(location.origin + location.pathname + "?r=" + room.code);
@@ -1031,8 +1132,10 @@ async function leave(silent) {
   try { if (!silent) await sb.rpc("leave_room", { p_room: room.room_id }); } catch(e){}
   if (lk.room) { lk.room.disconnect(); lk.room = null; lk.connected = false; }
   if (lkMafia.room) { try { lkMafia.room.disconnect(); } catch(e){} lkMafia.room = null; lkMafia.connected = false; }
-  if (channel) sb.removeChannel(channel);
+  if (channel) { try { await channel.untrack(); } catch(e){} sb.removeChannel(channel); }
   clearInterval(tickTimer); clearInterval(clockTimer);
+  keepAwake(false); online = new Set(); speaking = new Set(); endShown = false;
+  loadStats();
   room = null; game = null; myRole = null;
   history.replaceState(null, "", location.pathname);
   $("roomView").style.display = "none";
@@ -1056,6 +1159,13 @@ async function connectVideo() {
     $("videoHint").textContent = "";
     lk.room.on("trackSubscribed", attachAllTracks);
     lk.room.on("participantConnected", attachAllTracks);
+    lk.room.on("activeSpeakersChanged", sps => {
+      speaking = new Set((sps || []).map(p => p.identity));
+      document.querySelectorAll(".tile").forEach(t => {
+        const uid = t.id.replace("tile-", "");
+        t.classList.toggle("speaking", speaking.has(uid));
+      });
+    });
     attachAllTracks(); applyAV();
   } catch (e) {
     $("videoHint").textContent = "Видео: " + e.message;
