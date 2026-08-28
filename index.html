@@ -289,6 +289,12 @@ let codeShown=false, preset=null, soundOn=localStorage.getItem("sound") !== "off
 let micOn = localStorage.getItem("micOn") !== "0", camOn = localStorage.getItem("camOn") !== "0";
 let lkMafia = { room:null, connected:false };
 let online = new Set(), speaking = new Set();
+// боты живут в этой же вкладке и не отмечаются в presence — они всегда «на связи»
+function isOffline(uid) {
+  if (!online.size || uid === me.id) return false;
+  if (bots.some(b => b.uid === uid)) return false;
+  return !online.has(uid);
+}
 
 const $=id=>document.getElementById(id);
 
@@ -1017,7 +1023,7 @@ function render() {
     const host = players.find(x => x.uid === p.uid && x.is_host);
     const badges = [];
     if (p.narrator) badges.push('<span class="badge nom">ведущий 🎙</span>');
-    if (online.size && !online.has(p.uid)) badges.push('<span class="badge">📴 нет связи</span>');
+    if (isOffline(p.uid)) badges.push('<span class="badge">📴 нет связи</span>');
     if (p.fouls) badges.push(`<span class="badge mafi">⚠ фолы: ${p.fouls}</span>`);
     if (game && game.phase === "zeronight" && myRole && myRole.team &&
         myRole.team.some(t => t.nickname === p.nickname && t.seat === p.seat)) {
@@ -1043,7 +1049,7 @@ function render() {
     if (game && game.phase === "day" && preset && preset.speech_order && currentSpeaker() === p.uid) cls.push("turn");
     if (game && game.phase === "lastword" && game.state.lastword === p.uid) cls.push("turn");
     if (speaking.has(p.uid)) cls.push("speaking");
-    if (online.size && !online.has(p.uid)) cls.push("offline");
+    if (isOffline(p.uid)) cls.push("offline");
     if (game && game.phase === "voting" && cands.includes(p.uid)) cls.push("candidate");
     const clickable = inGame && my && my.alive && p.alive && (
       (game.phase === "day" && p.uid !== me.id) ||
