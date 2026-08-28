@@ -66,6 +66,11 @@
   }
   .eyebrow::before { content:"◆"; font-size:8px; color:var(--gold-deep); }
   .tagline { text-align:center; color:var(--muted); font-size:14px; margin-bottom:26px; }
+  /* в комнате герб сжимается в строку, чтобы стол был выше */
+  body.in-room .brand { flex-direction:row; justify-content:center; gap:14px; margin:10px 0 14px; animation:none; }
+  body.in-room .brand img { width:46px; height:46px; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,.5); }
+  body.in-room h1 { font-size:24px; letter-spacing:.14em; }
+  body.in-room .eyebrow, body.in-room .tagline { display:none; }
 
   /* ——— панели ——— */
   .card {
@@ -629,6 +634,7 @@ async function enterRoom(r) {
   history.replaceState(null, "", "?r=" + r.code);
   $("homeView").style.display = "none";
   $("roomView").style.display = "block";
+  document.body.classList.add("in-room");
   codeShown = false;
   $("roomCode").className = "code-pill hidden-code";
   $("roomCode").textContent = "👁 показать код";
@@ -1326,6 +1332,7 @@ async function leave(silent) {
   if (lkMafia.room) { try { lkMafia.room.disconnect(); } catch(e){} lkMafia.room = null; lkMafia.connected = false; }
   if (channel) { try { await channel.untrack(); } catch(e){} sb.removeChannel(channel); }
   clearInterval(tickTimer); clearInterval(clockTimer);
+  document.body.classList.remove("in-room");
   keepAwake(false); online = new Set(); speaking = new Set(); endShown = false;
   loadStats();
   room = null; game = null; myRole = null;
