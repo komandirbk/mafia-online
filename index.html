@@ -489,8 +489,8 @@ async function enterRoom(r) {
   $("roomCode").textContent = "👁 показать код";
   $("soundBtn").textContent = soundOn ? "🔊" : "🔇";
   $("roomMode").textContent = r.mode === "host" ? "живой ведущий" : "автоведущий";
+  await refreshPlayers();   // сначала игроки: loadPreset должен знать, хост ли мы
   await loadPreset();
-  await refreshPlayers();
   subscribe();
   connectVideo();
   await checkGame();
