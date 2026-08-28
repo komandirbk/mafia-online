@@ -203,6 +203,7 @@
   .tile.turn { border-color:var(--gold); box-shadow:0 0 24px rgba(245,212,134,.28); }
   .tile.speaking { border-color:var(--jade); box-shadow:0 0 0 2px rgba(79,178,134,.3), 0 0 22px rgba(79,178,134,.25); }
   .tile.offline { filter:grayscale(.75); opacity:.55; }
+  .tile.debrief { border-color:rgba(245,212,134,.28); }
   .tile.dead::after { content:"☠"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     font-size:52px; color:rgba(231,236,245,.5); background:rgba(4,6,12,.78); z-index:2; }
   .tile .ctl { position:absolute; top:6px; right:6px; display:flex; gap:4px; z-index:4; }
@@ -409,9 +410,10 @@
     <div class="role-name" id="endTitle"></div>
     <div class="team-list" id="endRoles"></div>
     <div class="board" id="endBoard"></div>
+    <div class="hint" style="padding:6px 0 0">После игры микрофоны открыты у всех — и у выбывших тоже</div>
     <div class="row" style="margin-top:12px">
       <button id="rematchBtn" style="display:none" onclick="rematch()">🔄 Реванш — тем же составом</button>
-      <button class="ghost" onclick="closeEnd()">К лобби</button>
+      <button class="ghost" onclick="closeEnd()">💬 Обсудить</button>
     </div>
   </div>
 </div>
@@ -432,7 +434,8 @@ const ROLE_RU = {
 };
 const PHASE_TITLE = {
   reveal:"Раздача ролей", zeronight:"Нулевая ночь", day:"День — обсуждение", voting:"Голосование",
-  allraise:"Подъём всех", lastword:"Последнее слово", night:"Ночь", morning:"Утро", finished:"Игра окончена"
+  allraise:"Подъём всех", lastword:"Последнее слово", night:"Ночь", morning:"Утро",
+  freetalk:"Балаган", finished:"Разбор полётов"
 };
 
 // Пресеты — 1в1 как встроенные в iOS-приложении
@@ -1184,6 +1187,7 @@ function phaseHint() {
       if (r === "lover") return "Кого заблокировать? 💋";
       return "Город спит… не подсматривай 😴";
     case "morning": return "Итоги ночи. Нажми «Готов», чтобы продолжить";
+    case "finished": return "Разбор полётов: роли открыты, говорят все — и выбывшие тоже";
     default: return "";
   }
 }
@@ -1202,7 +1206,10 @@ function render() {
 
   if (game) {
     $("gamePanel").style.display = "block";
-    $("phaseTitle").textContent = (PHASE_TITLE[game.phase] || game.phase) + (game.phase !== "reveal" && !game.winner ? " · день " + game.day_number : "");
+    const winTitle = { red:"Победа мирных", black:"Победа мафии", maniac:"Победил маньяк" }[game.winner];
+    $("phaseTitle").textContent = game.winner
+      ? `${winTitle || "Игра окончена"} · разбор полётов`
+      : (PHASE_TITLE[game.phase] || game.phase) + (game.phase !== "reveal" ? " · день " + game.day_number : "");
     $("phaseSub").innerHTML = game.phase === "morning" && lastCheck ? lastCheck : phaseHint();
   } else $("gamePanel").style.display = "none";
 
@@ -1259,6 +1266,11 @@ function render() {
         myRole.team.some(t => t.nickname === p.nickname && t.seat === p.seat)) {
       badges.push('<span class="badge mafi">🤝 своя</span>');
     }
+    if (game && game.winner && finalRoles[p.uid]) {
+      const rr = ROLE_RU[finalRoles[p.uid]] || ["?","❓"];
+      badges.push(`<span class="badge ${["mafia","don"].includes(finalRoles[p.uid]) ? "mafi" : "vote"}">${rr[1]} ${rr[0]}</span>`);
+      if (!p.alive) badges.push('<span class="badge">выбыл</span>');
+    }
     if (amNarrator() && hostRoles[p.uid]) {
       const rr = ROLE_RU[hostRoles[p.uid]] || ["?","❓"];
       badges.push(`<span class="badge ${["mafia","don"].includes(hostRoles[p.uid]) ? "mafi" : "vote"}">${rr[1]} ${rr[0]}</span>`);
@@ -1275,7 +1287,8 @@ function render() {
         badges.push('<span class="badge vote">выбор ✓</span>');
     }
     const cls = ["tile"];
-    if (!p.alive) cls.push("dead");
+    if (!p.alive && !(game && game.winner)) cls.push("dead");   // после игры за столом снова все
+    if (game && game.winner) cls.push("debrief");
     if (p.uid === me.id) cls.push("me");
     if (game && game.phase === "day" && preset && preset.speech_order && currentSpeaker() === p.uid) cls.push("turn");
     if (game && game.phase === "lastword" && game.state.lastword === p.uid) cls.push("turn");
@@ -1305,7 +1318,7 @@ function render() {
   if (game && game.winner) showEnd();
 }
 
-let endShown = false;
+let endShown = false, finalRoles = {};
 async function showEnd() {
   if (endShown) return; endShown = true;
   const win = { red:["🟥","Победа мирных!"], black:["⬛","Победа мафии!"], maniac:["🔪","Победил маньяк!"] }[game.winner] || ["🏁","Игра окончена"];
@@ -1313,6 +1326,7 @@ async function showEnd() {
   $("endTitle").textContent = win[1];
   const { data: roles } = await sb.from("online_roles").select("uid,role").eq("game_id", game.id);
   const rmap = {}; (roles||[]).forEach(r => rmap[r.uid] = r.role);
+  finalRoles = rmap; render();                       // на столе открываем роли для разбора
   $("endRoles").innerHTML = seatsG.map(s =>
     `#${s.seat} ${s.nickname} — ${(ROLE_RU[rmap[s.uid]]||["?"])[0]} ${s.alive ? "" : "☠"}`).join("<br>");
   $("rematchBtn").style.display = amHost() ? "block" : "none";
@@ -1327,7 +1341,7 @@ async function rematch() {
   $("rematchBtn").disabled = true;
   const { data } = await sb.rpc("restart_game", { p_room: room.room_id });
   if (data && data.error) { $("endBoard").textContent = "⚠ " + data.error; $("rematchBtn").disabled = false; return; }
-  game = null; endShown = false; myRole = null; seatsG = []; hostRoles = {};
+  game = null; endShown = false; finalRoles = {}; myRole = null; seatsG = []; hostRoles = {};
   closeEnd(); render(); renderSettings();
   const { data: sg } = await sb.rpc("start_game", { p_room: room.room_id });
   if (sg && sg.error) $("phaseSub").textContent = "⚠ " + ruErr(sg.error);
