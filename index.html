@@ -36,8 +36,9 @@
   body::before {
     content:""; position:fixed; inset:0; z-index:-2; pointer-events:none;
     background:
-      radial-gradient(120% 90% at 12% -10%, rgba(224,179,85,.16), transparent 55%),
-      radial-gradient(110% 80% at 92% 108%, rgba(142,43,46,.22), transparent 58%),
+      radial-gradient(90% 70% at 8% -12%, rgba(224,179,85,.26), transparent 60%),
+      radial-gradient(85% 65% at 96% 112%, rgba(160,38,44,.32), transparent 62%),
+      radial-gradient(60% 40% at 50% 50%, rgba(120,150,220,.05), transparent 70%),
       linear-gradient(180deg,#070a12 0%,#0a0f1c 45%,#080b13 100%);
   }
   body::after {
@@ -49,8 +50,9 @@
 
   /* ——— герб и шапка ——— */
   .brand { display:flex; flex-direction:column; align-items:center; gap:10px; margin:18px 0 6px; }
-  .brand img { width:92px; height:92px; border-radius:22px; object-fit:cover;
-    border:1px solid var(--line); box-shadow:0 18px 44px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.5) inset; }
+  .brand img { width:108px; height:108px; border-radius:26px; object-fit:cover;
+    border:1px solid rgba(245,212,134,.35);
+    box-shadow:0 22px 60px rgba(0,0,0,.7), 0 0 44px rgba(224,179,85,.18), 0 0 0 1px rgba(0,0,0,.6) inset; }
   h1 {
     font-family:var(--serif); font-weight:700; font-size:clamp(30px,6vw,46px); line-height:1.05;
     letter-spacing:.16em; text-align:center; text-wrap:balance; text-transform:uppercase;
@@ -71,7 +73,9 @@
     border:1px solid var(--line-soft); border-radius:14px; padding:20px; margin-bottom:14px;
     box-shadow:0 20px 50px rgba(0,0,0,.45);
   }
-  .home { max-width:420px; margin:0 auto; }
+  .home { max-width:430px; margin:0 auto; padding:24px; }
+  .card, .brand { animation:rise .45s ease-out both; }
+  @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
 
   /* ——— формы ——— */
   input, select {
@@ -196,9 +200,12 @@
   .log .le.dead b { color:var(--blood); }
 
   /* ——— статистика ——— */
-  .stats { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-bottom:14px;
-    justify-content:center; }
-  .stats b { color:var(--gold); font-variant-numeric:tabular-nums; }
+  .stats { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; justify-content:center; }
+  .stats .chip { display:inline-flex; align-items:baseline; gap:6px; font-size:12px; color:var(--muted);
+    background:rgba(4,7,14,.55); border:1px solid var(--line-soft); border-radius:99px; padding:5px 12px;
+    white-space:nowrap; }
+  .stats .chip b { color:var(--gold); font-size:13px; font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  .stats .chip.empty { color:var(--dim); }
   .board { background:rgba(4,7,14,.55); border:1px solid var(--line-soft); border-radius:10px;
     padding:10px 12px; font-size:13px; margin-top:10px; }
   .board .row2 { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,.05); }
@@ -1285,10 +1292,12 @@ async function loadStats() {
   const { data } = await sb.rpc("my_stats");
   if (!data) return;
   const winRate = data.games ? Math.round(100 * data.wins / data.games) : 0;
+  const chip = (label, value) => `<span class="chip">${label} <b>${value}</b></span>`;
   $("myStats").innerHTML = data.games
-    ? `Игр: <b>${data.games}</b> · Побед: <b>${data.wins}</b> (${winRate}%) · за город <b>${data.wins_red}</b> · за мафию <b>${data.wins_black}</b>` +
-      (data.wins_maniac ? ` · маньяком <b>${data.wins_maniac}</b>` : "")
-    : "Ещё нет сыгранных партий — сыграй первую!";
+    ? chip("Партий", data.games) + chip("Побед", `${data.wins} · ${winRate}%`) +
+      chip("За город", data.wins_red) + chip("За мафию", data.wins_black) +
+      (data.wins_maniac ? chip("Маньяком", data.wins_maniac) : "")
+    : `<span class="chip empty">Партий пока нет — сыграй первую</span>`;
 }
 
 // --- Экран не гаснет во время игры ---
