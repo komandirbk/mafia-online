@@ -1101,6 +1101,7 @@ async function rematch() {
   closeEnd(); render(); renderSettings();
   const { data: sg } = await sb.rpc("start_game", { p_room: room.room_id });
   if (sg && sg.error) $("phaseSub").textContent = "⚠ " + ruErr(sg.error);
+  else { await checkGame(); render(); }
   $("rematchBtn").disabled = false;
 }
 
