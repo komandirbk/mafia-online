@@ -1136,7 +1136,7 @@ function renderMafiaRoom() {
     const video = tile.querySelector("video");
     if (live) { if (!video) tile.prepend(live.attach()); ph.style.display = "none"; }
     else { if (video) video.remove(); ph.style.display = ""; }
-    p.audioTrackPublications.forEach(pub => { if (pub.track && !p.isLocal) pub.track.attach(); });
+    if (!p.isLocal) attachAudioOnce("mafia-" + p.identity, p);
   });
 }
 
@@ -1466,6 +1466,8 @@ async function leave(silent) {
   if (channel) { try { await channel.untrack(); } catch(e){} sb.removeChannel(channel); }
   clearInterval(tickTimer); clearInterval(clockTimer);
   document.body.classList.remove("in-room");
+  audioEls.forEach(el => { try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {} });
+  audioEls.clear(); weakLink.clear();
   keepAwake(false); online = new Set(); speaking = new Set(); endShown = false;
   loadStats();
   room = null; game = null; myRole = null;
@@ -1571,16 +1573,36 @@ function attachTrackTo(uid, participant) {
     if (video) { video.style.display = "none"; delete video.dataset.sid; }
     if (ph) ph.style.display = "";
   }
+  if (!participant.isLocal) attachAudioOnce(uid, participant);
+}
+// Голос прикрепляем ровно один раз на дорожку. Повторный attach() создаёт ещё один
+// аудиоэлемент, и один и тот же человек звучит в несколько наложенных копий — это и был «робовойс».
+function audible(key) {
+  if (String(key).startsWith("mafia-")) return true;   // в ночной комнате мафия слышит своих всегда
+  return speechAllowedFor(key);
+}
+function attachAudioOnce(uid, participant) {
+  let live = null, sid = "";
   participant.audioTrackPublications.forEach(pub => {
-    if (pub.track && !participant.isLocal) {
-      const el = pub.track.attach();
-      audioEls.set(uid, el);
-      el.muted = !speechAllowedFor(uid);
-    }
+    if (pub.track && !pub.isMuted) { live = pub.track; sid = pub.trackSid || pub.track.sid || ""; }
   });
+  const prev = audioEls.get(uid);
+  if (!live) {
+    if (prev) { try { prev.pause(); prev.srcObject = null; prev.remove(); } catch (e) {} audioEls.delete(uid); }
+    return;
+  }
+  if (prev && prev.dataset.sid === sid) { prev.muted = !audible(uid); return; }
+  if (prev) { try { prev.pause(); prev.srcObject = null; prev.remove(); } catch (e) {} }
+  const el = live.attach();
+  el.dataset.sid = sid;
+  el.autoplay = true;
+  el.style.display = "none";
+  document.body.appendChild(el);
+  audioEls.set(uid, el);
+  el.muted = !audible(uid);
 }
 function muteForbiddenVoices() {
-  audioEls.forEach((el, uid) => { el.muted = !speechAllowedFor(uid); });
+  audioEls.forEach((el, uid) => { el.muted = !audible(uid); });
 }
 function attachAllTracks() {
   if (!lk.room) return;
