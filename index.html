@@ -46,6 +46,21 @@
   .comp-preview { margin-top:10px; padding:10px 12px; background:var(--elevated); border-radius:10px; font-size:13px; color:var(--text); }
   .settings-ro { font-size:13px; color:var(--muted); padding:8px 0; }
   .icon-btn { width:auto; background:var(--elevated); color:var(--muted); border:1px solid var(--divider); padding:8px 12px; }
+  .icon-btn.off { color:var(--accent); border-color:var(--accent); }
+  .icon-btn.locked { opacity:.5; }
+  .tile.speaking { border-color:var(--green); box-shadow:0 0 0 2px rgba(50,176,113,.35); }
+  .tile.turn { border-color:var(--gold); box-shadow:0 0 12px rgba(212,175,55,.4); }
+  .mafia-room { margin-top:12px; padding:12px; border:1px solid var(--accent); border-radius:14px; background:rgba(179,56,46,.08); }
+  .mafia-room h4 { color:var(--accent); font-size:14px; margin-bottom:8px; font-family:Georgia,serif; }
+  .mafia-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .mafia-grid .tile { aspect-ratio:4/3; }
+  .log { margin-top:14px; background:var(--surface); border:1px solid var(--divider); border-radius:14px; padding:12px 14px; max-height:220px; overflow-y:auto; font-size:13px; }
+  .log h4 { color:var(--gold); font-size:13px; margin-bottom:6px; text-transform:uppercase; letter-spacing:.08em; }
+  .log .le { padding:3px 0; border-bottom:1px solid var(--divider); color:var(--muted); }
+  .log .le:last-child { border:0; }
+  .log .le b { color:var(--text); }
+  .log .le time { color:var(--gold); font-variant-numeric:tabular-nums; margin-right:8px; }
+  .log .le.dead b { color:var(--accent); }
   .mode-tag { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); background:var(--elevated); border-radius:99px; padding:4px 10px; }
   .players { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
   .tile { position:relative; background:var(--elevated); border:2px solid var(--divider); border-radius:14px; aspect-ratio:4/3; overflow:hidden; display:flex; align-items:center; justify-content:center; }
@@ -132,6 +147,8 @@
         <div class="code-pill hidden-code" id="roomCode" onclick="toggleCode()" title="Показать / скрыть код">👁 показать код</div>
         <span class="mode-tag" id="roomMode"></span>
         <div class="row" style="flex:1; justify-content:flex-end; min-width:200px;">
+          <button class="icon-btn" onclick="toggleMic()" id="micBtn" title="Микрофон">🎤</button>
+          <button class="icon-btn" onclick="toggleCam()" id="camBtn" title="Камера">📷</button>
           <button class="icon-btn" onclick="toggleSound()" id="soundBtn" title="Звуки">🔊</button>
           <button class="ghost" style="width:auto" onclick="copyLink()" id="copyBtn">Пригласить</button>
           <button class="danger" style="width:auto" onclick="leave()">Выйти</button>
@@ -153,11 +170,20 @@
         <div class="timer" id="timer"></div>
       </div>
       <div class="players" id="playersGrid"></div>
+      <div class="mafia-room" id="mafiaRoom" style="display:none">
+        <h4>🔫 Комната мафии — вас не слышат и не видят</h4>
+        <div class="mafia-grid" id="mafiaGrid"></div>
+      </div>
       <div class="hint" id="videoHint"></div>
+      <div class="log" id="logBox" style="display:none">
+        <h4>Хроника партии</h4>
+        <div id="logList"></div>
+      </div>
       <div class="toolbar" id="toolbar">
         <button id="botBtn" class="ghost" style="display:none" onclick="addBot()">🤖 Добавить бота</button>
         <button id="startBtn" style="display:none" onclick="startGame()">Начать игру</button>
         <button id="readyBtn" style="display:none" onclick="sendReady()">Готов</button>
+        <button id="endSpeechBtn" style="display:none" onclick="endSpeech()">🎤 Передать слово →</button>
         <button id="hostNextBtn" style="display:none" onclick="hostNext()">Следующая фаза →</button>
         <button id="donModeBtn" class="ghost" style="display:none" onclick="toggleDonMode()"></button>
         <button id="airShotBtn" class="ghost" style="display:none" onclick="airShot()">💨 Выстрел в воздух</button>
@@ -223,15 +249,15 @@ const PHASE_TITLE = {
 const PRESETS = {
   sport: { name:"Спортивная (ФИИМ)", kind:"sport", day_seconds_per_player:60, last_word_seconds:60,
     zero_night_seconds:60, night_step_seconds:25, tie:"revoteThenJointDeath", can_nominate_self:false,
-    allow_mafia_skip_shot:false, skip_zero_night:false,
+    allow_mafia_skip_shot:false, skip_zero_night:false, speech_order:true, reveal_on_death:false,
     roles:{don:true, sheriff:true, doctor:false, maniac:false, lover:false} },
   yard: { name:"Дворовая", kind:"yard", day_seconds_per_player:45, last_word_seconds:30,
     zero_night_seconds:30, night_step_seconds:30, tie:"revoteThenNobody", can_nominate_self:true,
-    allow_mafia_skip_shot:true, skip_zero_night:false,
+    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:false, reveal_on_death:false,
     roles:{don:true, sheriff:true, doctor:true, maniac:false, lover:false} },
   extended: { name:"Расширенная", kind:"extended", day_seconds_per_player:60, last_word_seconds:60,
     zero_night_seconds:60, night_step_seconds:30, tie:"revoteThenAllRaise", can_nominate_self:false,
-    allow_mafia_skip_shot:true, skip_zero_night:false,
+    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:true, reveal_on_death:false,
     roles:{don:true, sheriff:true, doctor:true, maniac:true, lover:false} }
 };
 const TIE_RU = { revoteThenNobody:"переголосовка, затем никто не выбывает",
@@ -245,6 +271,8 @@ let lk={room:null,connected:false};
 let game=null, myRole=null, seatsG=[], mafiaMarks={}, donMode="kill", roleShown=false;
 let tickTimer=null, clockTimer=null, myActions={}, hostRoles={};
 let codeShown=false, preset=null, soundOn=localStorage.getItem("sound") !== "off", lastDeaths=0;
+let micOn = localStorage.getItem("micOn") !== "0", camOn = localStorage.getItem("camOn") !== "0";
+let lkMafia = { room:null, connected:false };
 
 const $=id=>document.getElementById(id);
 
@@ -514,6 +542,8 @@ function renderSettings() {
     chk("Можно выставлять себя", "can_nominate_self", preset.can_nominate_self),
     chk("Мафия может стрелять в воздух", "allow_mafia_skip_shot", preset.allow_mafia_skip_shot),
     chk("Пропускать нулевую ночь", "skip_zero_night", preset.skip_zero_night),
+    chk("Речь по кругу (говорит один)", "speech_order", preset.speech_order),
+    chk("Показывать роль выбывшего", "reveal_on_death", preset.reveal_on_death),
     `<label>При ничьей<select onchange="setField('tie', this.value)">` +
       Object.entries(TIE_RU).map(([k, v]) => `<option value="${k}" ${preset.tie === k ? "selected" : ""}>${v}</option>`).join("") +
       `</select></label>`
@@ -525,7 +555,9 @@ function settingsSummary() {
   const on = Object.entries(preset.roles).filter(([, v]) => v).map(([k]) => ROLE_SHORT[k]).join(", ");
   return `<b>${preset.name}</b><br>роли: ${on || "только мафия"}<br>` +
     `день ${preset.day_seconds_per_player}с/игрока · ночь ${preset.night_step_seconds}с/роль · последнее слово ${preset.last_word_seconds}с<br>` +
-    `ничья: ${TIE_RU[preset.tie]}${preset.can_nominate_self ? " · можно выставлять себя" : ""}` +
+    `ничья: ${TIE_RU[preset.tie]}${preset.speech_order ? " · речь по кругу" : ""}` +
+    `${preset.reveal_on_death ? " · роль выбывшего открывается" : " · роли выбывших скрыты"}` +
+    `${preset.can_nominate_self ? " · можно выставлять себя" : ""}` +
     `${preset.allow_mafia_skip_shot ? " · выстрел в воздух" : ""}${preset.skip_zero_night ? " · без нулевой ночи" : ""}`;
 }
 
@@ -567,14 +599,16 @@ async function onGame(g) {
     if (g.preset) preset = g.preset;
     await fetchSeats(); await fetchRole();
   }
-  if (phaseChanged) { myActions = {}; mafiaMarks = {}; applyAV(); await fetchSeats();
+  if (phaseChanged) { myActions = {}; mafiaMarks = {}; await fetchSeats(); applyAV(); syncMafiaRoom();
     if (g.phase === "morning") fetchNightResult();
     sfx(g.phase === "finished" ? ({red:"winRed", black:"winBlack", maniac:"winManiac"}[g.winner] || "winRed") : g.phase);
   }
   const deaths = (g.state.deaths || []).length;
   if (deaths > lastDeaths) { if (!phaseChanged || g.phase === "morning" || g.phase === "lastword") sfx("death"); }
   lastDeaths = deaths;
+  applyAV();          // право говорить меняется и при смене спикера внутри дня
   render();
+  renderLog();
 }
 
 async function fetchSeats() {
@@ -640,6 +674,11 @@ async function airShot() {
   if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
   myActions.mafia_kill = "air"; sfx("tick"); render();
 }
+async function endSpeech() {
+  const { data } = await sb.rpc("act", { p_game: game.id, p_kind: "end_speech" });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  sfx("tick"); await gameTick();
+}
 async function skipDonCheck() {
   const { data } = await sb.rpc("act", { p_game: game.id, p_kind: "don_check", p_target: null });
   if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
@@ -664,7 +703,15 @@ async function fetchMafiaMarks() {
   const { data } = await sb.from("online_actions").select("uid,target")
     .eq("game_id", game.id).eq("kind","mafia_kill").eq("day", game.day_number).eq("phase","night");
   mafiaMarks = {};
-  (data||[]).forEach(a => { if (a.target) mafiaMarks[a.target] = (mafiaMarks[a.target]||0)+1; });
+  const donUid = myRole && myRole.role === "don" ? me.id
+    : (myRole && myRole.team || []).filter(t => t.role === "don").map(t => (seatsG.find(s => s.seat === t.seat)||{}).uid)[0];
+  (data||[]).forEach(a => {
+    if (!a.target) return;
+    const s = seatsG.find(x => x.uid === a.uid);
+    (mafiaMarks[a.target] = mafiaMarks[a.target] || { who: [], don: false });
+    mafiaMarks[a.target].who.push(s ? s.nickname : "мафия");
+    if (donUid && a.uid === donUid) mafiaMarks[a.target].don = true;
+  });
   render();
 }
 
@@ -701,12 +748,110 @@ function ruErr(e) {
     skip_not_allowed:"Выстрел в воздух запрещён настройками", self_heal_used:"Себя можно лечить только раз за игру" }[e] || e;
 }
 
-function applyAV() {
-  if (!lk.room || !lk.connected || !game) return;
+// --- Кто сейчас имеет право говорить ---
+function speechAllowed() {
+  if (!game || game.winner) return true;             // после игры говорят все
+  if (amNarrator()) return true;                     // ведущий говорит всегда
   const my = mySeat();
-  // ведущий говорит всегда — он ведёт и ночь тоже
-  const mic = amNarrator() || (my && my.alive && game.phase !== "night" && !game.winner);
-  lk.room.localParticipant.setMicrophoneEnabled(!!mic).catch(()=>{});
+  if (!my || !my.alive) return false;                // выбывшие молчат
+  const ph = game.phase;
+  if (ph === "night" || ph === "zeronight") return false;   // ночью в общей комнате тишина
+  if (ph === "lastword") return game.state.lastword === me.id;
+  if (ph === "day" && preset && preset.speech_order) return currentSpeaker() === me.id;
+  return true;                                       // день без кругов, голосование, утро
+}
+function currentSpeaker() {
+  if (!game || !game.state.speakers) return null;
+  return game.state.speakers[game.state.speaker_i || 0] || null;
+}
+
+function applyAV() {
+  if (!lk.room || !lk.connected) return;
+  const allowed = speechAllowed();
+  lk.room.localParticipant.setMicrophoneEnabled(allowed && micOn).catch(()=>{});
+  lk.room.localParticipant.setCameraEnabled(camOn).catch(()=>{});
+  if (lkMafia.room && lkMafia.connected) {
+    lkMafia.room.localParticipant.setMicrophoneEnabled(micOn).catch(()=>{});
+    lkMafia.room.localParticipant.setCameraEnabled(camOn).catch(()=>{});
+  }
+  const micB = $("micBtn"), camB = $("camBtn");
+  micB.textContent = micOn ? (allowed ? "🎤" : "🎤🚫") : "🔇";
+  micB.className = "icon-btn" + (micOn ? (allowed ? "" : " locked") : " off");
+  micB.title = !micOn ? "Микрофон выключен тобой" : (allowed ? "Микрофон включён" : "Сейчас говорить нельзя по правилам фазы");
+  camB.textContent = camOn ? "📷" : "🚫📷";
+  camB.className = "icon-btn" + (camOn ? "" : " off");
+}
+function toggleMic() { micOn = !micOn; localStorage.setItem("micOn", micOn ? "1" : "0"); applyAV(); sfx("tick"); }
+function toggleCam() { camOn = !camOn; localStorage.setItem("camOn", camOn ? "1" : "0"); applyAV(); sfx("tick"); }
+
+// --- Приватная комната мафии на ночь ---
+async function syncMafiaRoom() {
+  const need = game && !game.winner && ["night","zeronight"].includes(game.phase) &&
+    ((myRole && ["mafia","don"].includes(myRole.role) && mySeat() && mySeat().alive) || amNarrator());
+  if (need && !lkMafia.room) {
+    const { data, error } = await sb.rpc("livekit_token", { p_room: room.room_id, p_kind: "mafia" });
+    if (error || !data || !data.token) return;
+    try {
+      lkMafia.room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+      await lkMafia.room.connect(data.url, data.token);
+      await lkMafia.room.localParticipant.enableCameraAndMicrophone();
+      lkMafia.connected = true;
+      lkMafia.room.on("trackSubscribed", renderMafiaRoom);
+      lkMafia.room.on("participantConnected", renderMafiaRoom);
+      lkMafia.room.on("participantDisconnected", renderMafiaRoom);
+      applyAV(); renderMafiaRoom();
+    } catch (e) { lkMafia.room = null; }
+  } else if (!need && lkMafia.room) {
+    try { lkMafia.room.disconnect(); } catch (e) {}
+    lkMafia.room = null; lkMafia.connected = false;
+    $("mafiaRoom").style.display = "none";
+  }
+}
+function renderMafiaRoom() {
+  const box = $("mafiaRoom"), grid = $("mafiaGrid");
+  if (!lkMafia.room || !lkMafia.connected) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  const parts = [lkMafia.room.localParticipant, ...lkMafia.room.remoteParticipants.values()];
+  grid.innerHTML = parts.map(p => {
+    const nick = p.name || "мафия";
+    return `<div class="tile" id="mtile-${p.identity}">
+      <div class="ph">${nick.slice(0,1).toUpperCase()}</div>
+      <div class="name">${nick}${p.isLocal ? " (ты)" : ""}</div></div>`;
+  }).join("");
+  parts.forEach(p => {
+    const tile = document.getElementById("mtile-" + p.identity);
+    if (!tile) return;
+    p.videoTrackPublications.forEach(pub => {
+      if (pub.track && !tile.querySelector("video")) {
+        tile.prepend(pub.track.attach());
+        tile.querySelector(".ph").style.display = "none";
+      }
+    });
+    p.audioTrackPublications.forEach(pub => { if (pub.track && !p.isLocal) pub.track.attach(); });
+  });
+}
+
+// --- Хроника партии (только публичные факты) ---
+const LOG_PHASE_RU = { day:"☀️ День", night:"🌙 Ночь", voting:"🗳 Голосование", allraise:"✋ Подъём всех" };
+const CAUSE_LOG = { voted:"выбывает по голосованию", night:"убит ночью",
+  joint:"выбывает — обоюдное выбывание", allraise:"выбывает — подъём всех", removed:"удалён ведущим" };
+function renderLog() {
+  const box = $("logBox"), list = $("logList");
+  const entries = (game && game.state && game.state.log) || [];
+  if (!game || !entries.length) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  list.innerHTML = entries.slice().reverse().map(e => {
+    let text = "";
+    if (e.t === "phase") text = (LOG_PHASE_RU[e.phase] || e.phase) + (e.phase === "day" || e.phase === "night" ? ` ${e.day}` : "");
+    else if (e.t === "nominate") text = `<b>${e.who}</b> выставляет <b>${e.whom}</b>`;
+    else if (e.t === "votes") text = "Голоса: " + (e.tally || []).map(v => `${v.who} — <b>${v.n}</b>`).join(", ");
+    else if (e.t === "revote") text = "Ничья — переголосовка";
+    else if (e.t === "tie_nobody") text = "Ничья и после переголосовки — никто не выбывает";
+    else if (e.t === "allraise") text = `Подъём всех: «за» ${e.yes} из ${e.alive}`;
+    else if (e.t === "death") text = `☠ <b>${e.who}</b> ${CAUSE_LOG[e.cause] || e.cause}` + (e.role ? ` (${(ROLE_RU[e.role]||[e.role])[0]})` : "");
+    else return "";
+    return `<div class="le${e.t === "death" ? " dead" : ""}"><time>${e.at || ""}</time>${text}</div>`;
+  }).join("");
 }
 
 function renderClock() {
@@ -739,7 +884,16 @@ function phaseHint() {
         : "Нулевая ночь — мафия знакомится. Закрой глаза 😴";
     case "allraise":
       return "Подъём всех: голосуем, уезжают ли оба кандидата. Больше половины «за» — уезжают";
-    case "day": return "Обсуждайте! Клик по игроку — выставить на голосование";
+    case "day": {
+      if (preset && preset.speech_order) {
+        const sp = seatsG.find(s => s.uid === currentSpeaker());
+        if (!sp) return "Обсуждение";
+        return sp.uid === me.id
+          ? "🎤 Твоя речь! Клик по игроку — выставить, затем «Передать слово»"
+          : `Говорит #${sp.seat} ${sp.nickname} — слушаем, микрофоны выключены`;
+      }
+      return "Обсуждайте! Клик по игроку — выставить на голосование";
+    }
     case "voting": return "Тайное голосование: клик по кандидату с оранжевой рамкой";
     case "lastword": {
       const lw = seatsG.find(s => s.uid === game.state.lastword);
@@ -778,7 +932,10 @@ function render() {
 
   const my = mySeat();
   const readyPhases = ["day","morning","zeronight"];
-  const showReady = !amNarrator() && (inGame && my && my.alive && readyPhases.includes(game.phase) && !myActions.ready
+  const speechDay = inGame && game.phase === "day" && preset && preset.speech_order;
+  const myTurn = speechDay && currentSpeaker() === me.id;
+  $("endSpeechBtn").style.display = myTurn ? "block" : "none";
+  const showReady = !amNarrator() && !speechDay && (inGame && my && my.alive && readyPhases.includes(game.phase) && !myActions.ready
     || inGame && game.phase === "lastword" && game.state.lastword === me.id);
   $("readyBtn").style.display = showReady ? "block" : "none";
   $("readyBtn").textContent = game && game.phase === "day" ? "Завершить обсуждение" :
@@ -823,13 +980,18 @@ function render() {
     if (game && !game.winner) {
       if (game.phase === "day" && noms.includes(p.uid)) badges.push('<span class="badge nom">выставлен</span>');
       if (game.phase === "voting" && myActions.vote === p.uid) badges.push('<span class="badge vote">твой голос ✓</span>');
-      if (game.phase === "night" && mafiaMarks[p.uid]) badges.push(`<span class="badge mafi">🔫 ${mafiaMarks[p.uid]}</span>`);
+      if (game.phase === "night" && mafiaMarks[p.uid]) {
+        const m = mafiaMarks[p.uid];
+        badges.push(`<span class="badge mafi">🔫 ${m.who.join(", ")}${m.don ? " · решение дона ✔" : ""}</span>`);
+      }
       if (["mafia_kill","don_check","sheriff_check","doctor_heal","maniac_kill","lover_block"].some(k => myActions[k] === p.uid))
         badges.push('<span class="badge vote">выбор ✓</span>');
     }
     const cls = ["tile"];
     if (!p.alive) cls.push("dead");
     if (p.uid === me.id) cls.push("me");
+    if (game && game.phase === "day" && preset && preset.speech_order && currentSpeaker() === p.uid) cls.push("turn");
+    if (game && game.phase === "lastword" && game.state.lastword === p.uid) cls.push("turn");
     if (game && game.phase === "voting" && cands.includes(p.uid)) cls.push("candidate");
     const clickable = inGame && my && my.alive && p.alive && (
       (game.phase === "day" && p.uid !== me.id) ||
@@ -868,6 +1030,7 @@ async function leave(silent) {
   if (bots.length) await dismissBots();
   try { if (!silent) await sb.rpc("leave_room", { p_room: room.room_id }); } catch(e){}
   if (lk.room) { lk.room.disconnect(); lk.room = null; lk.connected = false; }
+  if (lkMafia.room) { try { lkMafia.room.disconnect(); } catch(e){} lkMafia.room = null; lkMafia.connected = false; }
   if (channel) sb.removeChannel(channel);
   clearInterval(tickTimer); clearInterval(clockTimer);
   room = null; game = null; myRole = null;
@@ -957,6 +1120,14 @@ async function runBots() {
     const act = (kind, target) => b.c.rpc("act", { p_game: game.id, p_kind: kind, p_target: target || null });
     const others = seatsG.filter(s => s.alive && s.uid !== b.uid);
     try {
+      if (game.phase === "day" && preset && preset.speech_order) {
+        if (currentSpeaker() === b.uid) {
+          const others = seatsG.filter(s => s.alive && s.uid !== b.uid);
+          if (others.length && Math.random() < 0.4) await act("nominate", pick(others).uid);
+          await act("end_speech");
+        }
+        botDone[b.uid] = stamp; continue;
+      }
       if (b.role === "don" && game.phase === "night") await act("don_check");  // дон закрывает проверку
       if (game.phase === "reveal" || game.phase === "zeronight") await act("ready");
       else if (game.phase === "allraise") await act(Math.random() < 0.5 ? "raise_yes" : "raise_no");
