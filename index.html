@@ -3,116 +3,251 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Мафия Онлайн</title>
+<title>VIBE MAFIA</title>
+<meta name="description" content="VIBE MAFIA — онлайн-мафия с видео и голосом: комнаты по коду, живой ведущий или автоведущий, пресеты как в приложении.">
+<meta name="theme-color" content="#070a12">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
 <style>
+  /* VIBE MAFIA — тёмная сцена: золотой свет слева, багровый справа, как на гербе игры */
   :root {
-    --bg:#12100e; --surface:#1d1a17; --elevated:#282420; --text:#f0ead9;
-    --muted:#9c937f; --gold:#d4af37; --accent:#b3382e; --green:#32b071; --divider:#3a352e;
+    --ink:#070a12; --ink-2:#0b1020;
+    --panel:rgba(255,255,255,.028); --panel-2:rgba(255,255,255,.05);
+    --line:rgba(245,212,134,.14); --line-soft:rgba(255,255,255,.08);
+    --text:#e7ecf5; --muted:#8b97ad; --dim:#6b7789;
+    --gold:#f5d486; --gold-deep:#e0b355; --gold-dim:rgba(245,212,134,.55);
+    --blood:#c34a45; --blood-deep:#8e2b2e; --jade:#4fb286; --amber:#e8a24a;
+    --sans:"Inter",system-ui,-apple-system,"SF Pro Text",Segoe UI,sans-serif;
+    --serif:"Cinzel",Georgia,"Times New Roman",serif;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
   }
   * { box-sizing:border-box; margin:0; }
-  body { background:var(--bg); color:var(--text); font:16px/1.5 -apple-system,"SF Pro Text",Segoe UI,sans-serif; min-height:100vh; }
-  .wrap { max-width:1100px; margin:0 auto; padding:24px 16px; }
-  h1 { font-family:Georgia,serif; color:var(--gold); font-size:30px; text-align:center; margin:24px 0 6px; }
-  .tagline { text-align:center; color:var(--muted); font-size:14px; margin-bottom:28px; }
-  .card { background:var(--surface); border:1px solid var(--divider); border-radius:16px; padding:20px; margin-bottom:14px; }
-  .home { max-width:400px; margin:0 auto; }
-  input, select { width:100%; padding:12px 14px; margin-bottom:10px; background:var(--elevated); border:1px solid var(--divider); border-radius:10px; color:var(--text); font-size:16px; }
-  input::placeholder { color:var(--muted); }
-  button { background:var(--gold); color:#1d1a17; border:0; border-radius:10px; padding:12px 18px; font-weight:700; cursor:pointer; font-size:15px; width:100%; }
-  button.ghost { background:var(--elevated); color:var(--muted); border:1px solid var(--divider); }
-  button.danger { background:transparent; color:var(--accent); border:1px solid var(--accent); }
-  button:disabled { opacity:.45; cursor:default; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    background:var(--ink); color:var(--text); font:16px/1.55 var(--sans); min-height:100vh;
+    letter-spacing:.005em;
+  }
+  /* атмосфера сцены */
+  body::before {
+    content:""; position:fixed; inset:0; z-index:-2; pointer-events:none;
+    background:
+      radial-gradient(120% 90% at 12% -10%, rgba(224,179,85,.16), transparent 55%),
+      radial-gradient(110% 80% at 92% 108%, rgba(142,43,46,.22), transparent 58%),
+      linear-gradient(180deg,#070a12 0%,#0a0f1c 45%,#080b13 100%);
+  }
+  body::after {
+    content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.35;
+    background-image:radial-gradient(rgba(255,255,255,.05) .5px, transparent .5px);
+    background-size:3px 3px;
+  }
+  .wrap { max-width:1120px; margin:0 auto; padding:20px 16px 60px; }
+
+  /* ——— герб и шапка ——— */
+  .brand { display:flex; flex-direction:column; align-items:center; gap:10px; margin:18px 0 6px; }
+  .brand img { width:92px; height:92px; border-radius:22px; object-fit:cover;
+    border:1px solid var(--line); box-shadow:0 18px 44px rgba(0,0,0,.6), 0 0 0 1px rgba(0,0,0,.5) inset; }
+  h1 {
+    font-family:var(--serif); font-weight:700; font-size:clamp(30px,6vw,46px); line-height:1.05;
+    letter-spacing:.16em; text-align:center; text-wrap:balance; text-transform:uppercase;
+    background:linear-gradient(180deg,#fff5dd 0%,var(--gold) 45%,var(--gold-deep) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 0 34px rgba(224,179,85,.18);
+  }
+  .eyebrow {
+    font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.28em;
+    color:var(--gold-dim); display:inline-flex; align-items:center; gap:8px;
+  }
+  .eyebrow::before { content:"◆"; font-size:8px; color:var(--gold-deep); }
+  .tagline { text-align:center; color:var(--muted); font-size:14px; margin-bottom:26px; }
+
+  /* ——— панели ——— */
+  .card {
+    background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line-soft); border-radius:14px; padding:20px; margin-bottom:14px;
+    box-shadow:0 20px 50px rgba(0,0,0,.45);
+  }
+  .home { max-width:420px; margin:0 auto; }
+
+  /* ——— формы ——— */
+  input, select {
+    width:100%; padding:12px 14px; margin-bottom:10px; background:rgba(4,7,14,.72);
+    border:1px solid var(--line-soft); border-radius:10px; color:var(--text); font:15px var(--sans);
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus { outline:none; border-color:var(--gold-dim); box-shadow:0 0 0 3px rgba(245,212,134,.12); }
+  input::placeholder { color:var(--dim); }
+  button {
+    background:linear-gradient(180deg,var(--gold) 0%,var(--gold-deep) 100%); color:#1a1206;
+    border:0; border-radius:10px; padding:12px 18px; font:700 15px var(--sans); letter-spacing:.02em;
+    cursor:pointer; width:100%; transition:transform .12s, filter .15s, box-shadow .15s;
+    box-shadow:0 8px 22px rgba(224,179,85,.18);
+  }
+  button:hover { filter:brightness(1.06); transform:translateY(-1px); }
+  button:active { transform:translateY(0); }
+  button:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+  button.ghost {
+    background:rgba(255,255,255,.04); color:var(--text); border:1px solid var(--line-soft);
+    box-shadow:none; font-weight:600;
+  }
+  button.ghost:hover { border-color:var(--gold-dim); color:var(--gold); }
+  button.danger { background:transparent; color:var(--blood); border:1px solid rgba(195,74,69,.5); box-shadow:none; }
+  button:disabled { opacity:.4; cursor:default; transform:none; filter:none; }
   .row { display:flex; gap:10px; }
-  .err { color:var(--accent); font-size:13px; min-height:18px; margin-bottom:6px; text-align:center; }
-  .divider { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; margin:16px 0; }
-  .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--divider); }
+  .err { color:var(--blood); font-size:13px; min-height:18px; margin-bottom:6px; text-align:center; }
+  .divider { display:flex; align-items:center; gap:10px; color:var(--dim); font-size:11px;
+    text-transform:uppercase; letter-spacing:.2em; margin:16px 0; }
+  .divider::before, .divider::after { content:""; flex:1; height:1px;
+    background:linear-gradient(90deg,transparent,var(--line-soft),transparent); }
+
+  /* ——— комната ——— */
   #roomView { display:none; }
-  .room-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
-  .code-pill { font-family:Georgia,serif; font-size:24px; letter-spacing:.35em; color:var(--gold); background:var(--surface); border:1px dashed var(--gold); border-radius:12px; padding:6px 14px 6px 20px; cursor:pointer; user-select:none; }
-  .code-pill.hidden-code { letter-spacing:.15em; font-size:15px; color:var(--muted); border-color:var(--divider); font-family:inherit; padding:10px 14px; }
+  .room-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+  .code-pill {
+    font-family:var(--mono); font-size:22px; font-weight:700; letter-spacing:.35em; color:var(--gold);
+    background:rgba(4,7,14,.6); border:1px solid var(--gold-dim); border-radius:12px;
+    padding:8px 14px 8px 20px; cursor:pointer; user-select:none;
+  }
+  .code-pill.hidden-code { font-family:var(--sans); font-size:13px; font-weight:600; letter-spacing:.06em;
+    color:var(--muted); border-color:var(--line-soft); padding:10px 14px; }
+  .code-pill:hover { border-color:var(--gold); }
+  .mode-tag { font-size:10px; text-transform:uppercase; letter-spacing:.22em; color:var(--gold-dim);
+    background:rgba(245,212,134,.07); border:1px solid var(--line); border-radius:99px; padding:5px 12px; }
+
+  /* ——— настройки ——— */
   .settings { margin-bottom:14px; }
-  .settings summary { cursor:pointer; color:var(--gold); font-weight:700; padding:6px 0; list-style:none; }
+  .settings summary { cursor:pointer; color:var(--gold); font:600 12px var(--sans);
+    text-transform:uppercase; letter-spacing:.2em; padding:8px 0; list-style:none; }
   .settings summary::-webkit-details-marker { display:none; }
   .preset-row { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
-  .preset-btn { background:var(--elevated); color:var(--muted); border:1px solid var(--divider); border-radius:99px; padding:7px 14px; font-size:13px; font-weight:600; cursor:pointer; width:auto; }
-  .preset-btn.on { background:var(--gold); color:#1d1a17; border-color:var(--gold); }
-  .set-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px 16px; margin-top:8px; }
+  .preset-btn { background:rgba(255,255,255,.04); color:var(--muted); border:1px solid var(--line-soft);
+    border-radius:99px; padding:7px 15px; font:600 13px var(--sans); cursor:pointer; width:auto; box-shadow:none; }
+  .preset-btn.on { background:linear-gradient(180deg,var(--gold),var(--gold-deep)); color:#1a1206; border-color:var(--gold-deep); }
+  .set-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px 18px; margin-top:10px; }
   .set-grid label { font-size:13px; color:var(--muted); display:flex; align-items:center; justify-content:space-between; gap:8px; }
-  .set-grid input[type=number] { width:80px; margin:0; padding:6px 8px; font-size:14px; }
-  .set-grid input[type=checkbox] { width:auto; margin:0; accent-color:var(--gold); }
+  .set-grid input[type=number] { width:82px; margin:0; padding:6px 8px; font:14px var(--mono); text-align:center; }
+  .set-grid input[type=checkbox] { width:auto; margin:0; accent-color:var(--gold-deep); }
   .set-grid select { margin:0; padding:6px 8px; font-size:13px; width:auto; flex:1; }
-  .comp-preview { margin-top:10px; padding:10px 12px; background:var(--elevated); border-radius:10px; font-size:13px; color:var(--text); }
+  .comp-preview { margin-top:12px; padding:10px 12px; background:rgba(4,7,14,.6);
+    border:1px solid var(--line-soft); border-radius:10px; font-size:13px; color:var(--text); }
   .settings-ro { font-size:13px; color:var(--muted); padding:8px 0; }
-  .icon-btn { width:auto; background:var(--elevated); color:var(--muted); border:1px solid var(--divider); padding:8px 12px; }
-  .icon-btn.off { color:var(--accent); border-color:var(--accent); }
-  .icon-btn.locked { opacity:.5; }
-  .tile.speaking { border-color:var(--green); box-shadow:0 0 0 2px rgba(50,176,113,.35); }
-  .tile.turn { border-color:var(--gold); box-shadow:0 0 12px rgba(212,175,55,.4); }
-  .mafia-room { margin-top:12px; padding:12px; border:1px solid var(--accent); border-radius:14px; background:rgba(179,56,46,.08); }
-  .mafia-room h4 { color:var(--accent); font-size:14px; margin-bottom:8px; font-family:Georgia,serif; }
-  .mafia-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
-  .mafia-grid .tile { aspect-ratio:4/3; }
-  .log { margin-top:14px; background:var(--surface); border:1px solid var(--divider); border-radius:14px; padding:12px 14px; max-height:220px; overflow-y:auto; font-size:13px; }
-  .log h4 { color:var(--gold); font-size:13px; margin-bottom:6px; text-transform:uppercase; letter-spacing:.08em; }
-  .log .le { padding:3px 0; border-bottom:1px solid var(--divider); color:var(--muted); }
-  .log .le:last-child { border:0; }
-  .log .le b { color:var(--text); }
-  .log .le time { color:var(--gold); font-variant-numeric:tabular-nums; margin-right:8px; }
-  .log .le.dead b { color:var(--accent); }
-  .tile.offline { filter:grayscale(.7); opacity:.6; }
-  .tile .ctl { position:absolute; top:6px; right:6px; display:flex; gap:4px; z-index:4; }
-  .tile .ctl button { width:auto; padding:2px 7px; font-size:12px; background:rgba(0,0,0,.7); color:var(--muted);
-    border:1px solid var(--divider); border-radius:8px; }
-  .tile .ctl button:hover { color:var(--text); border-color:var(--gold); }
-  .stats { display:flex; gap:14px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-bottom:12px; }
-  .stats b { color:var(--gold); }
-  .board { background:var(--elevated); border-radius:10px; padding:10px 12px; font-size:13px; margin-top:10px; }
-  .board .row2 { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid var(--divider); }
-  .board .row2:last-child { border:0; }
-  .mode-tag { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); background:var(--elevated); border-radius:99px; padding:4px 10px; }
-  .players { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
-  .tile { position:relative; background:var(--elevated); border:2px solid var(--divider); border-radius:14px; aspect-ratio:4/3; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+
+  /* ——— управление ——— */
+  .icon-btn { width:auto; background:rgba(255,255,255,.04); color:var(--muted);
+    border:1px solid var(--line-soft); padding:8px 12px; box-shadow:none; }
+  .icon-btn.off { color:var(--blood); border-color:rgba(195,74,69,.45); }
+  .icon-btn.locked { opacity:.45; }
+
+  /* ——— стол ——— */
+  .players { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px; }
+  .tile {
+    position:relative; background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));
+    border:1px solid var(--line-soft); border-radius:14px; aspect-ratio:4/3; overflow:hidden;
+    display:flex; align-items:center; justify-content:center; transition:border-color .15s, box-shadow .2s, transform .15s;
+  }
   .tile video { width:100%; height:100%; object-fit:cover; }
-  .tile .ph { font-family:Georgia,serif; font-size:38px; color:var(--gold); opacity:.7; }
-  .tile .name { position:absolute; left:8px; bottom:8px; background:rgba(0,0,0,.6); border-radius:8px; padding:3px 9px; font-size:13px; font-weight:600; z-index:3; }
+  .tile .ph { font-family:var(--serif); font-size:40px; font-weight:700; color:var(--gold); opacity:.35; }
+  .tile .name { position:absolute; left:8px; bottom:8px; background:rgba(4,7,14,.78);
+    border:1px solid var(--line-soft); border-radius:8px; padding:3px 9px; font-size:12.5px; font-weight:600; z-index:3; }
   .tile .name .crown { color:var(--gold); }
   .tile .badges { position:absolute; top:6px; left:6px; right:6px; display:flex; gap:4px; flex-wrap:wrap; z-index:3; }
-  .badge { font-size:11px; font-weight:700; border-radius:99px; padding:2px 8px; background:rgba(0,0,0,.65); }
-  .badge.nom { color:#ffb454; border:1px solid #ffb454; }
-  .badge.vote { color:var(--green); border:1px solid var(--green); }
-  .badge.mafi { color:var(--accent); border:1px solid var(--accent); }
+  .badge { font-size:10.5px; font-weight:700; border-radius:99px; padding:2px 8px;
+    background:rgba(4,7,14,.8); letter-spacing:.02em; }
+  .badge.nom { color:var(--amber); border:1px solid rgba(232,162,74,.55); }
+  .badge.vote { color:var(--jade); border:1px solid rgba(79,178,134,.5); }
+  .badge.mafi { color:var(--blood); border:1px solid rgba(195,74,69,.5); }
   .tile.clickable { cursor:pointer; }
-  .tile.clickable:hover { border-color:var(--gold); }
-  .tile.candidate { border-color:#ffb454; }
+  .tile.clickable:hover { border-color:var(--gold-dim); transform:translateY(-2px); }
+  .tile.candidate { border-color:rgba(232,162,74,.7); box-shadow:0 0 0 1px rgba(232,162,74,.25); }
+  .tile.me { border-color:var(--gold-dim); }
+  .tile.turn { border-color:var(--gold); box-shadow:0 0 24px rgba(245,212,134,.28); }
+  .tile.speaking { border-color:var(--jade); box-shadow:0 0 0 2px rgba(79,178,134,.3), 0 0 22px rgba(79,178,134,.25); }
+  .tile.offline { filter:grayscale(.75); opacity:.55; }
   .tile.dead::after { content:"☠"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-size:52px; background:rgba(10,8,6,.72); z-index:2; }
-  .tile.me { border-color:var(--gold); }
-  .hint { color:var(--muted); font-size:13px; text-align:center; padding:10px; }
-  .toolbar { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    font-size:52px; color:rgba(231,236,245,.5); background:rgba(4,6,12,.78); z-index:2; }
+  .tile .ctl { position:absolute; top:6px; right:6px; display:flex; gap:4px; z-index:4; }
+  .tile .ctl button { width:auto; padding:2px 7px; font-size:12px; background:rgba(4,7,14,.85); color:var(--muted);
+    border:1px solid var(--line-soft); border-radius:8px; box-shadow:none; }
+  .tile .ctl button:hover { color:var(--gold); border-color:var(--gold-dim); }
+
+  /* ——— комната мафии ——— */
+  .mafia-room { margin-top:14px; padding:14px; border:1px solid rgba(195,74,69,.35); border-radius:14px;
+    background:linear-gradient(180deg,rgba(142,43,46,.14),rgba(142,43,46,.05)); }
+  .mafia-room h4 { color:var(--blood); font:700 11px var(--sans); text-transform:uppercase;
+    letter-spacing:.22em; margin-bottom:10px; }
+  .mafia-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .mafia-grid .tile { aspect-ratio:4/3; }
+
+  /* ——— хроника ——— */
+  .log { margin-top:16px; background:linear-gradient(180deg,var(--panel-2),var(--panel));
+    border:1px solid var(--line-soft); border-radius:14px; padding:14px 16px; max-height:230px;
+    overflow-y:auto; font-size:13px; }
+  .log h4 { color:var(--gold-dim); font:600 10.5px var(--sans); margin-bottom:8px;
+    text-transform:uppercase; letter-spacing:.24em; }
+  .log .le { padding:4px 0; border-bottom:1px solid rgba(255,255,255,.05); color:var(--muted); }
+  .log .le:last-child { border:0; }
+  .log .le b { color:var(--text); }
+  .log .le time { color:var(--gold-dim); font-family:var(--mono); font-size:11px;
+    font-variant-numeric:tabular-nums; margin-right:9px; }
+  .log .le.dead b { color:var(--blood); }
+
+  /* ——— статистика ——— */
+  .stats { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-bottom:14px;
+    justify-content:center; }
+  .stats b { color:var(--gold); font-variant-numeric:tabular-nums; }
+  .board { background:rgba(4,7,14,.55); border:1px solid var(--line-soft); border-radius:10px;
+    padding:10px 12px; font-size:13px; margin-top:10px; }
+  .board .row2 { display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+  .board .row2:last-child { border:0; }
+
+  /* ——— фаза ——— */
+  #gamePanel { display:none; text-align:center; margin-bottom:14px; }
+  .phase-title { font-family:var(--serif); font-weight:700; font-size:26px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--gold); }
+  .phase-sub { color:var(--muted); font-size:14px; margin-top:4px; min-height:20px; }
+  .timer { font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:21px; font-weight:700;
+    color:var(--text); margin-top:6px; letter-spacing:.04em; }
+  .timer.low { color:var(--blood); }
+  .hint { color:var(--dim); font-size:13px; text-align:center; padding:10px; }
+  .toolbar { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
   .toolbar button { width:auto; flex:1; min-width:150px; }
-  #gamePanel { display:none; text-align:center; margin-bottom:12px; }
-  .phase-title { font-family:Georgia,serif; font-size:24px; color:var(--gold); }
-  .phase-sub { color:var(--muted); font-size:14px; margin-top:2px; min-height:20px; }
-  .timer { font-variant-numeric:tabular-nums; font-size:20px; font-weight:700; color:var(--text); margin-top:4px; }
-  .timer.low { color:var(--accent); }
-  .overlay { position:fixed; inset:0; background:rgba(10,8,6,.88); display:none; align-items:center; justify-content:center; z-index:50; padding:20px; }
-  .overlay .card { max-width:420px; width:100%; text-align:center; }
-  .role-big { font-size:60px; margin:6px 0; }
-  .role-name { font-family:Georgia,serif; font-size:30px; color:var(--gold); margin-bottom:6px; }
-  .role-desc { color:var(--muted); font-size:14px; margin-bottom:14px; }
-  .team-list { text-align:left; background:var(--elevated); border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:14px; }
-  .deaths { text-align:left; background:var(--elevated); border-radius:10px; padding:10px 14px; margin:10px 0; font-size:14px; }
-  .deaths .d { color:var(--accent); font-weight:600; }
-  .checkres { margin:8px 0; font-weight:700; }
-  .black { color:var(--accent); } .red { color:var(--green); }
+
+  /* ——— оверлеи ——— */
+  .overlay { position:fixed; inset:0; background:rgba(4,6,12,.9); backdrop-filter:blur(6px);
+    display:none; align-items:center; justify-content:center; z-index:50; padding:20px; }
+  .overlay .card { max-width:430px; width:100%; text-align:center; }
+  .role-big { font-size:62px; margin:6px 0; }
+  .role-name { font-family:var(--serif); font-weight:700; font-size:28px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--gold); margin-bottom:8px; }
+  .role-desc { color:var(--muted); font-size:14px; margin-bottom:16px; }
+  .team-list, .deaths { text-align:left; background:rgba(4,7,14,.55); border:1px solid var(--line-soft);
+    border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:14px; }
+  .deaths { margin:10px 0; }
+  .deaths .d { color:var(--blood); font-weight:600; }
+  .checkres { margin:10px 0; font-weight:700; }
+  .black { color:var(--blood); } .red { color:var(--jade); }
+
+  @media (prefers-reduced-motion:reduce) {
+    * { animation:none !important; transition:none !important; }
+  }
+  @media (max-width:520px) {
+    .brand img { width:72px; height:72px; }
+    .players { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); }
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🎩 Мафия Онлайн</h1>
-  <div class="tagline">город засыпает — а вы подключаетесь</div>
+  <header class="brand">
+    <img src="logo.png" alt="Герб VIBE MAFIA: шляпа, карты и маска" width="320" height="320">
+    <span class="eyebrow">Онлайн-стол с голосом и видео</span>
+    <h1>Vibe Mafia</h1>
+  </header>
+  <div class="tagline">Город засыпает — а вы подключаетесь</div>
 
   <div id="authView" class="home card">
     <div class="err" id="authErr"></div>
