@@ -107,6 +107,7 @@
       <div class="players" id="playersGrid"></div>
       <div class="hint" id="videoHint"></div>
       <div class="toolbar" id="toolbar">
+        <button id="botBtn" class="ghost" style="display:none" onclick="addBot()">🤖 Добавить бота</button>
         <button id="startBtn" style="display:none" onclick="startGame()">Начать игру</button>
         <button id="readyBtn" style="display:none" onclick="sendReady()">Готов</button>
         <button id="hostNextBtn" style="display:none" onclick="hostNext()">Следующая фаза →</button>
@@ -239,7 +240,8 @@ async function onGame(g) {
   const isNew = !game || game.id !== g.id;
   const phaseChanged = !game || game.phase !== g.phase;
   game = g;
-  if (isNew) { roleShown = false; myActions = {}; mafiaMarks = {};
+  if (isNew) { roleShown = false; myActions = {}; mafiaMarks = {}; botDone = {};
+    bots.forEach(b => b.role = null);
     await fetchSeats(); await fetchRole();
   }
   if (phaseChanged) { myActions = {}; mafiaMarks = {}; applyAV(); await fetchSeats();
@@ -412,7 +414,10 @@ function render() {
   const inGame = game && !["finished"].includes(game.phase) && !game.winner;
   // в режиме живого ведущего сам ведущий за стол не садится
   const seated = room.mode === "host" ? players.filter(p => !p.is_host).length : players.length;
-  $("startBtn").style.display = (!game || game.winner) && amHost() ? "block" : "none";
+  const inLobby = (!game || game.winner) && amHost();
+  $("botBtn").style.display = inLobby && players.length < 12 ? "block" : "none";
+  $("botBtn").textContent = bots.length ? `🤖 Ещё бот (${bots.length})` : "🤖 Добавить бота (тест в одиночку)";
+  $("startBtn").style.display = inLobby ? "block" : "none";
   $("startBtn").disabled = seated < 4;
   $("startBtn").textContent = seated < 4 ? `Начать игру (нужно 4 игрока, есть ${seated})` : "Начать игру";
 
@@ -493,6 +498,7 @@ function copyLink() {
   setTimeout(()=>$("copyBtn").textContent="Пригласить", 1500);
 }
 async function leave(silent) {
+  if (bots.length) await dismissBots();
   try { if (!silent) await sb.rpc("leave_room", { p_room: room.room_id }); } catch(e){}
   if (lk.room) { lk.room.disconnect(); lk.room = null; lk.connected = false; }
   if (channel) sb.removeChannel(channel);
@@ -541,6 +547,77 @@ function attachAllTracks() {
   if (!lk.room) return;
   attachTrackTo(me.id, lk.room.localParticipant);
   lk.room.remoteParticipants.forEach(p => attachTrackTo(p.identity, p));
+}
+
+// --- Боты: чтобы можно было протестировать игру в одиночку ---
+const BOT_NAMES = ["Бот Аня","Бот Гриша","Бот Дима","Бот Женя","Бот Костя","Бот Лиза",
+                   "Бот Марк","Бот Оля","Бот Петя","Бот Рита","Бот Саша","Бот Тимур"];
+let bots = [], botTimer = null, botDone = {};
+
+async function addBot() {
+  const btn = $("botBtn"); btn.disabled = true;
+  try {
+    const c = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY,
+      { auth: { persistSession:false, autoRefreshToken:false } });
+    const { data, error } = await c.auth.signInAnonymously();
+    if (error) throw error;
+    const name = BOT_NAMES[bots.length % BOT_NAMES.length];
+    const { data: j, error: je } = await c.rpc("join_room", { p_code: room.code, p_nickname: name });
+    if (je) throw je;
+    if (j && j.error) throw new Error(j.error);
+    bots.push({ c, uid: data.user.id, name, role: null });
+    await refreshPlayers();
+    if (!botTimer) botTimer = setInterval(runBots, 2500);
+  } catch (e) { alert("Бот не добавился: " + (e.message || e)); }
+  btn.disabled = false;
+}
+
+async function runBots() {
+  if (!bots.length || !game || game.winner) return;
+  const stamp = `${game.id}|${game.phase}|${game.day_number}`;
+  const seatOf = uid => seatsG.find(s => s.uid === uid);
+  const isAlive = uid => { const s = seatOf(uid); return !s || s.alive; };
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+
+  for (const b of bots) {
+    if (botDone[b.uid] === stamp) continue;
+    if (!b.role) {
+      const { data } = await b.c.rpc("my_role", { p_game: game.id });
+      if (data && data.role) b.role = data.role;
+    }
+    if (!isAlive(b.uid)) { botDone[b.uid] = stamp; continue; }
+    const act = (kind, target) => b.c.rpc("act", { p_game: game.id, p_kind: kind, p_target: target || null });
+    const others = seatsG.filter(s => s.alive && s.uid !== b.uid);
+    try {
+      if (game.phase === "reveal") await act("ready");
+      else if (game.phase === "day") {
+        if (others.length && Math.random() < 0.45) await act("nominate", pick(others).uid);
+        await act("ready");
+      } else if (game.phase === "voting") {
+        const cands = (game.state.candidates || []).filter(isAlive);
+        if (cands.length) await act("vote", pick(cands));
+      } else if (game.phase === "lastword") {
+        if (game.state.lastword === b.uid) await act("ready");
+      } else if (game.phase === "morning") await act("ready");
+      else if (game.phase === "night" && others.length) {
+        const t = pick(others).uid;
+        if (b.role === "mafia") await act("mafia_kill", t);
+        else if (b.role === "don") { await act("mafia_kill", t); await act("don_check", t); }
+        else if (b.role === "sheriff") await act("sheriff_check", t);
+        else if (b.role === "doctor") await act("doctor_heal", t);
+        else if (b.role === "maniac") await act("maniac_kill", t);
+        else if (b.role === "lover") await act("lover_block", t);
+      }
+    } catch (e) {}
+    botDone[b.uid] = stamp;
+  }
+  gameTick();
+}
+
+async function dismissBots() {
+  clearInterval(botTimer); botTimer = null;
+  for (const b of bots) { try { await b.c.rpc("leave_room", { p_room: room.room_id }); } catch(e){} }
+  bots = []; botDone = {};
 }
 
 const inviteCode = new URLSearchParams(location.search).get("r");
