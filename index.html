@@ -13,7 +13,7 @@
   }
   * { box-sizing:border-box; margin:0; }
   body { background:var(--bg); color:var(--text); font:16px/1.5 -apple-system,"SF Pro Text",Segoe UI,sans-serif; min-height:100vh; }
-  .wrap { max-width:960px; margin:0 auto; padding:24px 16px; }
+  .wrap { max-width:1100px; margin:0 auto; padding:24px 16px; }
   h1 { font-family:Georgia,serif; color:var(--gold); font-size:30px; text-align:center; margin:24px 0 6px; }
   .tagline { text-align:center; color:var(--muted); font-size:14px; margin-bottom:28px; }
   .card { background:var(--surface); border:1px solid var(--divider); border-radius:16px; padding:20px; margin-bottom:14px; }
@@ -30,17 +30,43 @@
   .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--divider); }
   #roomView { display:none; }
   .room-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
-  .code-pill { font-family:Georgia,serif; font-size:26px; letter-spacing:.35em; color:var(--gold); background:var(--surface); border:1px dashed var(--gold); border-radius:12px; padding:8px 18px 8px 24px; }
+  .code-pill { font-family:Georgia,serif; font-size:24px; letter-spacing:.35em; color:var(--gold); background:var(--surface); border:1px dashed var(--gold); border-radius:12px; padding:6px 14px 6px 20px; }
   .mode-tag { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); background:var(--elevated); border-radius:99px; padding:4px 10px; }
-  .players { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; }
-  .tile { position:relative; background:var(--elevated); border:1px solid var(--divider); border-radius:14px; aspect-ratio:4/3; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .players { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
+  .tile { position:relative; background:var(--elevated); border:2px solid var(--divider); border-radius:14px; aspect-ratio:4/3; overflow:hidden; display:flex; align-items:center; justify-content:center; }
   .tile video { width:100%; height:100%; object-fit:cover; }
   .tile .ph { font-family:Georgia,serif; font-size:38px; color:var(--gold); opacity:.7; }
-  .tile .name { position:absolute; left:8px; bottom:8px; background:rgba(0,0,0,.55); border-radius:8px; padding:3px 9px; font-size:13px; font-weight:600; }
+  .tile .name { position:absolute; left:8px; bottom:8px; background:rgba(0,0,0,.6); border-radius:8px; padding:3px 9px; font-size:13px; font-weight:600; z-index:3; }
   .tile .name .crown { color:var(--gold); }
+  .tile .badges { position:absolute; top:6px; left:6px; right:6px; display:flex; gap:4px; flex-wrap:wrap; z-index:3; }
+  .badge { font-size:11px; font-weight:700; border-radius:99px; padding:2px 8px; background:rgba(0,0,0,.65); }
+  .badge.nom { color:#ffb454; border:1px solid #ffb454; }
+  .badge.vote { color:var(--green); border:1px solid var(--green); }
+  .badge.mafi { color:var(--accent); border:1px solid var(--accent); }
+  .tile.clickable { cursor:pointer; }
+  .tile.clickable:hover { border-color:var(--gold); }
+  .tile.candidate { border-color:#ffb454; }
+  .tile.dead::after { content:"☠"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:52px; background:rgba(10,8,6,.72); z-index:2; }
+  .tile.me { border-color:var(--gold); }
   .hint { color:var(--muted); font-size:13px; text-align:center; padding:10px; }
   .toolbar { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
-  .toolbar button { width:auto; flex:1; min-width:140px; }
+  .toolbar button { width:auto; flex:1; min-width:150px; }
+  #gamePanel { display:none; text-align:center; margin-bottom:12px; }
+  .phase-title { font-family:Georgia,serif; font-size:24px; color:var(--gold); }
+  .phase-sub { color:var(--muted); font-size:14px; margin-top:2px; min-height:20px; }
+  .timer { font-variant-numeric:tabular-nums; font-size:20px; font-weight:700; color:var(--text); margin-top:4px; }
+  .timer.low { color:var(--accent); }
+  .overlay { position:fixed; inset:0; background:rgba(10,8,6,.88); display:none; align-items:center; justify-content:center; z-index:50; padding:20px; }
+  .overlay .card { max-width:420px; width:100%; text-align:center; }
+  .role-big { font-size:60px; margin:6px 0; }
+  .role-name { font-family:Georgia,serif; font-size:30px; color:var(--gold); margin-bottom:6px; }
+  .role-desc { color:var(--muted); font-size:14px; margin-bottom:14px; }
+  .team-list { text-align:left; background:var(--elevated); border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:14px; }
+  .deaths { text-align:left; background:var(--elevated); border-radius:10px; padding:10px 14px; margin:10px 0; font-size:14px; }
+  .deaths .d { color:var(--accent); font-weight:600; }
+  .checkres { margin:8px 0; font-weight:700; }
+  .black { color:var(--accent); } .red { color:var(--green); }
 </style>
 </head>
 <body>
@@ -69,16 +95,44 @@
         <div class="code-pill" id="roomCode">······</div>
         <span class="mode-tag" id="roomMode"></span>
         <div class="row" style="flex:1; justify-content:flex-end; min-width:200px;">
-          <button class="ghost" style="width:auto" onclick="copyLink()" id="copyBtn">Скопировать приглашение</button>
+          <button class="ghost" style="width:auto" onclick="copyLink()" id="copyBtn">Пригласить</button>
           <button class="danger" style="width:auto" onclick="leave()">Выйти</button>
         </div>
       </div>
+      <div id="gamePanel">
+        <div class="phase-title" id="phaseTitle"></div>
+        <div class="phase-sub" id="phaseSub"></div>
+        <div class="timer" id="timer"></div>
+      </div>
       <div class="players" id="playersGrid"></div>
       <div class="hint" id="videoHint"></div>
-      <div class="toolbar">
-        <button id="startBtn" style="display:none" disabled>Начать игру (скоро)</button>
+      <div class="toolbar" id="toolbar">
+        <button id="startBtn" style="display:none" onclick="startGame()">Начать игру</button>
+        <button id="readyBtn" style="display:none" onclick="sendReady()">Готов</button>
+        <button id="hostNextBtn" style="display:none" onclick="hostNext()">Следующая фаза →</button>
+        <button id="donModeBtn" class="ghost" style="display:none" onclick="toggleDonMode()"></button>
       </div>
     </div>
+  </div>
+</div>
+
+<div class="overlay" id="roleOverlay">
+  <div class="card">
+    <div>Твоя роль</div>
+    <div class="role-big" id="roleEmoji"></div>
+    <div class="role-name" id="roleName"></div>
+    <div class="role-desc" id="roleDesc"></div>
+    <div class="team-list" id="teamList" style="display:none"></div>
+    <button onclick="closeRole()">Понял, готов играть</button>
+  </div>
+</div>
+
+<div class="overlay" id="endOverlay">
+  <div class="card">
+    <div class="role-big" id="endEmoji"></div>
+    <div class="role-name" id="endTitle"></div>
+    <div class="team-list" id="endRoles"></div>
+    <button onclick="location.href=location.pathname">В новое лобби</button>
   </div>
 </div>
 
@@ -87,53 +141,60 @@ const SUPABASE_URL = "https://ktypybmjiwaltdokdmqm.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_QNh7vPkGwnLd-2xxaW--vQ_c3ehx8rN";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let me = null;            // auth user
-let room = null;          // {room_id, code, mode}
-let players = [];
-let channel = null;
-let lk = { room: null, connected: false };
+const ROLE_RU = {
+  civilian:["Мирный житель","🧑‍🌾","Днём ищи мафию, голосуй мудро."],
+  mafia:["Мафия","🔫","Ночью выбирай жертву вместе с командой. Днём не спались."],
+  don:["Дон","🎩","Глава мафии: твой голос решает споры, ночью можешь искать шерифа."],
+  sheriff:["Шериф","⭐","Каждую ночь проверяй одного игрока: чёрный или красный."],
+  doctor:["Доктор","💉","Каждую ночь лечи одного игрока (нельзя одного и того же дважды подряд)."],
+  maniac:["Маньяк","🔪","Играешь сам за себя: убивай по ночам, останься последним."],
+  lover:["Любовница","💋","Ночью блокируй действия одного игрока."]
+};
+const PHASE_TITLE = {
+  reveal:"Раздача ролей", day:"День — обсуждение", voting:"Голосование",
+  lastword:"Последнее слово", night:"Ночь", morning:"Утро", finished:"Игра окончена"
+};
 
-const $ = id => document.getElementById(id);
+let me=null, room=null, players=[], channel=null;
+let lk={room:null,connected:false};
+let game=null, myRole=null, seatsG=[], mafiaMarks={}, donMode="kill", roleShown=false;
+let tickTimer=null, clockTimer=null, myActions={};
+
+const $=id=>document.getElementById(id);
 $("nickname").value = localStorage.getItem("nick") || "";
 
 async function ensureAuth() {
   const { data } = await sb.auth.getSession();
   if (data.session) { me = data.session.user; return; }
   const { data: anon, error } = await sb.auth.signInAnonymously();
-  if (error) throw new Error("Анонимный вход не включён: " + error.message);
+  if (error) throw new Error("Анонимный вход недоступен: " + error.message);
   me = anon.user;
 }
-
 function nick() {
   const n = $("nickname").value.trim();
   if (!n) { $("homeErr").textContent = "Сначала введи имя"; return null; }
-  localStorage.setItem("nick", n);
-  return n;
+  localStorage.setItem("nick", n); return n;
 }
-
 async function create() {
   const n = nick(); if (!n) return;
-  try {
-    await ensureAuth();
-    const { data, error } = await sb.rpc("create_room", { p_nickname: n, p_mode: $("mode").value });
+  try { await ensureAuth();
+    const { data, error } = await sb.rpc("create_room", { p_nickname:n, p_mode:$("mode").value });
     if (error || data.error) throw new Error(error?.message || data.error);
-    enterRoom({ room_id: data.room_id, code: data.code, mode: $("mode").value });
-  } catch (e) { $("homeErr").textContent = e.message; }
+    enterRoom({ room_id:data.room_id, code:data.code, mode:$("mode").value });
+  } catch(e){ $("homeErr").textContent = e.message; }
 }
-
 async function join(codeArg) {
   const n = nick(); if (!n) return;
   const code = (codeArg || $("joinCode").value).trim().toUpperCase();
   if (code.length !== 6) { $("homeErr").textContent = "Код — 6 символов"; return; }
-  try {
-    await ensureAuth();
-    const { data, error } = await sb.rpc("join_room", { p_code: code, p_nickname: n });
+  try { await ensureAuth();
+    const { data, error } = await sb.rpc("join_room", { p_code:code, p_nickname:n });
     if (error) throw new Error(error.message);
     if (data.error === "not_found") throw new Error("Комната не найдена");
     if (data.error === "full") throw new Error("Комната заполнена");
     if (data.error) throw new Error(data.error);
     enterRoom(data);
-  } catch (e) { $("homeErr").textContent = e.message; }
+  } catch(e){ $("homeErr").textContent = e.message; }
 }
 
 async function enterRoom(r) {
@@ -146,82 +207,299 @@ async function enterRoom(r) {
   await refreshPlayers();
   subscribe();
   connectVideo();
+  await checkGame();
+  tickTimer = setInterval(gameTick, 5000);
+  clockTimer = setInterval(renderClock, 1000);
 }
 
 async function refreshPlayers() {
   const { data } = await sb.from("room_players").select("*").eq("room_id", room.room_id).order("joined_at");
   players = data || [];
-  renderPlayers();
-  const host = players.find(p => p.uid === me.id && p.is_host);
-  $("startBtn").style.display = host ? "block" : "none";
+  render();
 }
 
 function subscribe() {
   if (channel) sb.removeChannel(channel);
   channel = sb.channel("room:" + room.room_id)
-    .on("postgres_changes", { event: "*", schema: "public", table: "room_players", filter: "room_id=eq." + room.room_id }, refreshPlayers)
-    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "rooms", filter: "id=eq." + room.room_id }, p => {
-      if (p.new.status === "finished") { alert("Ведущий закрыл комнату"); leave(true); }
+    .on("postgres_changes",{event:"*",schema:"public",table:"room_players",filter:"room_id=eq."+room.room_id}, refreshPlayers)
+    .on("postgres_changes",{event:"*",schema:"public",table:"online_games",filter:"room_id=eq."+room.room_id}, p => { if (p.new?.id) onGame(p.new); })
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"rooms",filter:"id=eq."+room.room_id}, p => {
+      if (p.new.status === "finished" && !game) { alert("Комната закрыта"); leave(true); }
     })
     .subscribe();
 }
 
-function renderPlayers() {
+async function checkGame() {
+  const { data } = await sb.from("online_games").select("*").eq("room_id", room.room_id)
+    .order("created_at",{ascending:false}).limit(1);
+  if (data && data[0]) onGame(data[0]);
+}
+
+async function onGame(g) {
+  const isNew = !game || game.id !== g.id;
+  const phaseChanged = !game || game.phase !== g.phase;
+  game = g;
+  if (isNew) { roleShown = false; myActions = {}; mafiaMarks = {};
+    await fetchSeats(); await fetchRole();
+  }
+  if (phaseChanged) { myActions = {}; mafiaMarks = {}; applyAV(); await fetchSeats();
+    if (g.phase === "morning") fetchNightResult();
+  }
+  render();
+}
+
+async function fetchSeats() {
+  if (!game) return;
+  const { data } = await sb.from("online_seats").select("*").eq("game_id", game.id).order("seat");
+  seatsG = data || [];
+}
+async function fetchRole() {
+  const { data } = await sb.rpc("my_role", { p_game: game.id });
+  if (data && data.role) { myRole = data; if (!roleShown) showRole(); }
+}
+let lastCheck = "";
+async function fetchNightResult() {
+  const { data } = await sb.rpc("my_night_result", { p_game: game.id });
+  if (!data || !data.length) return;
+  const last = data.filter(r => r.day === game.day_number);
+  lastCheck = last.map(r => {
+    const t = seatsG.find(s => s.uid === r.target);
+    const who = t ? t.nickname : "?";
+    if (r.kind === "sheriff_check") return `Проверка: ${who} — ` + (r.result.is_black ? '<span class="black">ЧЁРНЫЙ ⬛</span>' : '<span class="red">красный 🟥</span>');
+    if (r.kind === "don_check") return `Проверка: ${who} — ` + (r.result.is_sheriff ? '<span class="black">ШЕРИФ ⭐</span>' : "не шериф");
+    return "";
+  }).join("<br>");
+  render();
+}
+
+function showRole() {
+  roleShown = true;
+  const [name, emoji, desc] = ROLE_RU[myRole.role] || [myRole.role,"❓",""];
+  $("roleEmoji").textContent = emoji;
+  $("roleName").textContent = name;
+  $("roleDesc").textContent = desc;
+  const tl = $("teamList");
+  if (myRole.team && myRole.team.length) {
+    tl.style.display = "block";
+    tl.innerHTML = "<b>Твоя команда:</b><br>" + myRole.team.map(t => `#${t.seat} ${t.nickname} (${ROLE_RU[t.role][0]})`).join("<br>");
+  } else tl.style.display = "none";
+  $("roleOverlay").style.display = "flex";
+}
+function closeRole() {
+  $("roleOverlay").style.display = "none";
+  if (game && game.phase === "reveal") sendReady();
+}
+
+async function startGame() {
+  const { data, error } = await sb.rpc("start_game", { p_room: room.room_id });
+  if (error || data.error) alert("Не удалось начать: " + (error?.message || data.error));
+}
+async function sendReady() {
+  myActions.ready = true; render();
+  await sb.rpc("act", { p_game: game.id, p_kind: "ready" });
+}
+async function hostNext() { await sb.rpc("host_next", { p_game: game.id }); }
+function toggleDonMode() {
+  donMode = donMode === "kill" ? "check" : "kill"; render();
+}
+async function gameTick() {
+  if (!game || game.winner) return;
+  await sb.rpc("tick", { p_game: game.id });
+  const { data } = await sb.from("online_games").select("*").eq("id", game.id);
+  if (data && data[0]) onGame(data[0]);
+  if (game.phase === "night" && myRole && ["mafia","don"].includes(myRole.role)) fetchMafiaMarks();
+}
+async function fetchMafiaMarks() {
+  const { data } = await sb.from("online_actions").select("uid,target")
+    .eq("game_id", game.id).eq("kind","mafia_kill").eq("day", game.day_number).eq("phase","night");
+  mafiaMarks = {};
+  (data||[]).forEach(a => { if (a.target) mafiaMarks[a.target] = (mafiaMarks[a.target]||0)+1; });
+  render();
+}
+
+function mySeat() { return seatsG.find(s => s.uid === me.id); }
+function alive(uid) { const s = seatsG.find(x => x.uid === uid); return s && s.alive; }
+function amHost() { return players.find(p => p.uid === me.id && p.is_host); }
+
+async function tileClick(uid) {
+  if (!game || game.winner || uid === me.id && game.phase !== "night") {}
+  const my = mySeat();
+  if (!my || !my.alive) return;
+  let kind = null;
+  if (game.phase === "day" && uid !== me.id) kind = "nominate";
+  else if (game.phase === "voting") kind = "vote";
+  else if (game.phase === "night" && myRole) {
+    const r = myRole.role;
+    if (r === "mafia") kind = "mafia_kill";
+    else if (r === "don") kind = donMode === "kill" ? "mafia_kill" : "don_check";
+    else if (r === "sheriff") kind = "sheriff_check";
+    else if (r === "doctor") kind = "doctor_heal";
+    else if (r === "maniac") kind = "maniac_kill";
+    else if (r === "lover") kind = "lover_block";
+  }
+  if (!kind) return;
+  const { data } = await sb.rpc("act", { p_game: game.id, p_kind: kind, p_target: uid });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  myActions[kind] = uid; render();
+  if (kind === "mafia_kill") fetchMafiaMarks();
+}
+function ruErr(e) {
+  return { self:"Себя выставить нельзя", same_heal:"Нельзя лечить одного дважды подряд",
+    not_candidate:"Голосовать можно только за кандидата", bad_target:"Цель недоступна",
+    wrong_phase:"Не та фаза", forbidden:"Недоступно твоей роли", dead:"Ты выбыл" }[e] || e;
+}
+
+function applyAV() {
+  if (!lk.room || !lk.connected || !game) return;
+  const my = mySeat();
+  const mic = my && my.alive && game.phase !== "night" && !game.winner;
+  lk.room.localParticipant.setMicrophoneEnabled(!!mic).catch(()=>{});
+}
+
+function renderClock() {
+  if (!game || !game.deadline || game.winner) { $("timer").textContent = ""; return; }
+  const left = Math.max(0, Math.floor((new Date(game.deadline) - Date.now()) / 1000));
+  $("timer").textContent = Math.floor(left/60) + ":" + String(left%60).padStart(2,"0");
+  $("timer").className = "timer" + (left <= 10 ? " low" : "");
+}
+
+function phaseHint() {
+  const my = mySeat();
+  if (!my) return "";
+  if (!my.alive && game.phase !== "finished") return "Ты выбыл — наблюдай молча 🤫";
+  const r = myRole ? myRole.role : "civilian";
+  switch (game.phase) {
+    case "reveal": return "Посмотри свою роль и нажми «Готов»";
+    case "day": return "Обсуждайте! Клик по игроку — выставить на голосование";
+    case "voting": return "Тайное голосование: клик по кандидату с оранжевой рамкой";
+    case "lastword": {
+      const lw = seatsG.find(s => s.uid === game.state.lastword);
+      return lw && lw.uid === me.id ? "Твоё последнее слово!" : `Последнее слово: ${lw ? lw.nickname : ""}`;
+    }
+    case "night":
+      if (r === "mafia") return "Выбери жертву 🔫 (клик по игроку)";
+      if (r === "don") return donMode === "kill" ? "Режим: выстрел 🔫 — клик по жертве" : "Режим: проверка на шерифа 🔍";
+      if (r === "sheriff") return "Кого проверить? 🔍";
+      if (r === "doctor") return "Кого лечить? 💉";
+      if (r === "maniac") return "Твоя жертва? 🔪";
+      if (r === "lover") return "Кого заблокировать? 💋";
+      return "Город спит… не подсматривай 😴";
+    case "morning": return "Итоги ночи. Нажми «Готов», чтобы продолжить";
+    default: return "";
+  }
+}
+
+function render() {
   const grid = $("playersGrid");
-  grid.innerHTML = players.map(p => `
-    <div class="tile" id="tile-${p.uid}">
-      <div class="ph">${(p.nickname || "?").slice(0, 1).toUpperCase()}</div>
-      <div class="name">${p.is_host ? '<span class="crown">♛</span> ' : ""}${p.nickname}${p.uid === me.id ? " (ты)" : ""}</div>
-    </div>`).join("");
+  const inGame = game && !["finished"].includes(game.phase) && !game.winner;
+  $("startBtn").style.display = (!game || game.winner) && amHost() ? "block" : "none";
+  $("startBtn").disabled = players.length < 4;
+  $("startBtn").textContent = players.length < 4 ? `Начать игру (нужно 4+, сейчас ${players.length})` : "Начать игру";
+
+  if (game) {
+    $("gamePanel").style.display = "block";
+    $("phaseTitle").textContent = (PHASE_TITLE[game.phase] || game.phase) + (game.phase !== "reveal" && !game.winner ? " · день " + game.day_number : "");
+    $("phaseSub").innerHTML = game.phase === "morning" && lastCheck ? lastCheck : phaseHint();
+  } else $("gamePanel").style.display = "none";
+
+  const my = mySeat();
+  const readyPhases = ["day","morning"];
+  const showReady = inGame && my && my.alive && readyPhases.includes(game.phase) && !myActions.ready
+    || inGame && game.phase === "lastword" && game.state.lastword === me.id;
+  $("readyBtn").style.display = showReady ? "block" : "none";
+  $("readyBtn").textContent = game && game.phase === "day" ? "Завершить обсуждение" :
+    game && game.phase === "lastword" ? "Закончить речь" : "Готов";
+  $("hostNextBtn").style.display = inGame && room.mode === "host" && amHost() ? "block" : "none";
+  $("donModeBtn").style.display = inGame && game.phase === "night" && myRole && myRole.role === "don" ? "block" : "none";
+  $("donModeBtn").textContent = donMode === "kill" ? "🔫 Выстрел (сменить на проверку)" : "🔍 Проверка (сменить на выстрел)";
+
+  const list = inGame || (game && game.winner) ? seatsG : players.map(p => ({uid:p.uid, nickname:p.nickname, alive:true, seat:null, is_host:p.is_host}));
+  const noms = game ? (game.state.nominations || []) : [];
+  const cands = game ? (game.state.candidates || []) : [];
+  grid.innerHTML = list.map(p => {
+    const host = players.find(x => x.uid === p.uid && x.is_host);
+    const badges = [];
+    if (game && !game.winner) {
+      if (game.phase === "day" && noms.includes(p.uid)) badges.push('<span class="badge nom">выставлен</span>');
+      if (game.phase === "voting" && myActions.vote === p.uid) badges.push('<span class="badge vote">твой голос ✓</span>');
+      if (game.phase === "night" && mafiaMarks[p.uid]) badges.push(`<span class="badge mafi">🔫 ${mafiaMarks[p.uid]}</span>`);
+      if (["mafia_kill","don_check","sheriff_check","doctor_heal","maniac_kill","lover_block"].some(k => myActions[k] === p.uid))
+        badges.push('<span class="badge vote">выбор ✓</span>');
+    }
+    const cls = ["tile"];
+    if (!p.alive) cls.push("dead");
+    if (p.uid === me.id) cls.push("me");
+    if (game && game.phase === "voting" && cands.includes(p.uid)) cls.push("candidate");
+    const clickable = inGame && my && my.alive && p.alive && (
+      (game.phase === "day" && p.uid !== me.id) ||
+      (game.phase === "voting" && cands.includes(p.uid)) ||
+      (game.phase === "night"));
+    if (clickable) cls.push("clickable");
+    return `<div class="${cls.join(" ")}" id="tile-${p.uid}" ${clickable ? `onclick="tileClick('${p.uid}')"` : ""}>
+      <div class="ph">${(p.nickname||"?").slice(0,1).toUpperCase()}</div>
+      <div class="badges">${badges.join("")}</div>
+      <div class="name">${host ? '<span class="crown">♛</span> ' : ""}${p.seat ? "#"+p.seat+" " : ""}${p.nickname}${p.uid===me.id?" (ты)":""}</div>
+    </div>`;
+  }).join("");
   if (lk.connected) attachAllTracks();
+
+  if (game && game.winner) showEnd();
+}
+
+async function showEnd() {
+  const win = { red:["🟥","Победа мирных!"], black:["⬛","Победа мафии!"], maniac:["🔪","Победил маньяк!"] }[game.winner] || ["🏁","Игра окончена"];
+  $("endEmoji").textContent = win[0];
+  $("endTitle").textContent = win[1];
+  const { data: roles } = await sb.from("online_roles").select("uid,role").eq("game_id", game.id);
+  const rmap = {}; (roles||[]).forEach(r => rmap[r.uid] = r.role);
+  $("endRoles").innerHTML = seatsG.map(s =>
+    `#${s.seat} ${s.nickname} — ${(ROLE_RU[rmap[s.uid]]||["?"])[0]} ${s.alive ? "" : "☠"}`).join("<br>");
+  $("endOverlay").style.display = "flex";
 }
 
 function copyLink() {
   navigator.clipboard.writeText(location.origin + location.pathname + "?r=" + room.code);
   $("copyBtn").textContent = "Скопировано ✓";
-  setTimeout(() => $("copyBtn").textContent = "Скопировать приглашение", 1500);
+  setTimeout(()=>$("copyBtn").textContent="Пригласить", 1500);
 }
-
 async function leave(silent) {
-  try { if (!silent) await sb.rpc("leave_room", { p_room: room.room_id }); } catch (e) {}
+  try { if (!silent) await sb.rpc("leave_room", { p_room: room.room_id }); } catch(e){}
   if (lk.room) { lk.room.disconnect(); lk.room = null; lk.connected = false; }
   if (channel) sb.removeChannel(channel);
-  room = null;
+  clearInterval(tickTimer); clearInterval(clockTimer);
+  room = null; game = null; myRole = null;
   history.replaceState(null, "", location.pathname);
   $("roomView").style.display = "none";
   $("homeView").style.display = "block";
 }
 
-// --- Видео (LiveKit). До настройки ключей показывает подсказку. ---
 async function connectVideo() {
   let data, error;
   try { ({ data, error } = await sb.rpc("livekit_token", { p_room: room.room_id })); }
   catch (e) { error = e; }
   if (error || !data || !data.token) {
-    $("videoHint").textContent = "Видео и аудио появятся после подключения LiveKit — пока можно созвониться в Discord.";
+    $("videoHint").textContent = "Видео недоступно — играйте с созвоном в Discord.";
     return;
   }
   try {
-    lk.room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+    lk.room = new LivekitClient.Room({ adaptiveStream:true, dynacast:true });
     await lk.room.connect(data.url, data.token);
     await lk.room.localParticipant.enableCameraAndMicrophone();
     lk.connected = true;
     $("videoHint").textContent = "";
     lk.room.on("trackSubscribed", attachAllTracks);
     lk.room.on("participantConnected", attachAllTracks);
-    attachAllTracks();
+    attachAllTracks(); applyAV();
   } catch (e) {
-    $("videoHint").textContent = "Не удалось подключить видео: " + e.message;
+    $("videoHint").textContent = "Видео: " + e.message;
   }
 }
-
 function attachTrackTo(uid, participant) {
   const tile = document.getElementById("tile-" + uid);
   if (!tile) return;
   participant.videoTrackPublications.forEach(pub => {
     if (pub.track && !tile.querySelector("video")) {
-      const el = pub.track.attach();
-      tile.prepend(el);
+      tile.prepend(pub.track.attach());
       tile.querySelector(".ph").style.display = "none";
     }
   });
@@ -229,14 +507,12 @@ function attachTrackTo(uid, participant) {
     if (pub.track && !participant.isLocal) pub.track.attach();
   });
 }
-
 function attachAllTracks() {
   if (!lk.room) return;
   attachTrackTo(me.id, lk.room.localParticipant);
   lk.room.remoteParticipants.forEach(p => attachTrackTo(p.identity, p));
 }
 
-// Автовход по ссылке-приглашению
 const inviteCode = new URLSearchParams(location.search).get("r");
 if (inviteCode) {
   $("joinCode").value = inviteCode.toUpperCase();
