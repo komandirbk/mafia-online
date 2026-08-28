@@ -809,6 +809,7 @@ function ruErr(e) {
     not_candidate:"Голосовать можно только за кандидата", bad_target:"Цель недоступна",
     wrong_phase:"Не та фаза", forbidden:"Недоступно твоей роли", dead:"Ты выбыл",
     not_host:"Только ведущий комнаты может это делать", not_your_turn:"Сейчас говорит другой игрок",
+    already_nominated:"Ты уже выставил игрока — выбор окончательный",
     skip_not_allowed:"Выстрел в воздух запрещён настройками", self_heal_used:"Себя можно лечить только раз за игру" }[e] || e;
 }
 
@@ -899,7 +900,7 @@ function renderMafiaRoom() {
 const LOG_PHASE_RU = { day:"☀️ День", night:"🌙 Ночь", voting:"🗳 Голосование", allraise:"✋ Подъём всех" };
 const CAUSE_LOG = { voted:"выбывает по голосованию", night:"убит ночью",
   joint:"выбывает — обоюдное выбывание", allraise:"выбывает — подъём всех", removed:"удалён ведущим",
-  fouls:"удалён за фолы", kicked:"удалён из игры" };
+  fouls:"удалён за фолы", kicked:"удалён из игры", left:"вышел из игры" };
 function renderLog() {
   const box = $("logBox"), list = $("logList");
   const entries = (game && game.state && game.state.log) || [];
@@ -913,7 +914,6 @@ function renderLog() {
     else if (e.t === "revote") text = "Ничья — переголосовка";
     else if (e.t === "tie_nobody") text = "Ничья и после переголосовки — никто не выбывает";
     else if (e.t === "allraise") text = `Подъём всех: «за» ${e.yes} из ${e.alive}`;
-    else if (e.t === "renominate") text = `↔️ <b>${e.who}</b> переставил выставление: ${e.was} → <b>${e.whom}</b>`;
     else if (e.t === "foul") text = `⚠ <b>${e.who}</b> получает фол (${e.n})`;
     else if (e.t === "end") text = "🏁 " + ({red:"Победа мирных", black:"Победа мафии", maniac:"Победил маньяк"}[e.winner] || "Игра окончена");
     else if (e.t === "death") text = `☠ <b>${e.who}</b> ${CAUSE_LOG[e.cause] || e.cause}` + (e.role ? ` (${(ROLE_RU[e.role]||[e.role])[0]})` : "");
@@ -953,14 +953,18 @@ function phaseHint() {
     case "allraise":
       return "Подъём всех: голосуем, уезжают ли оба кандидата. Больше половины «за» — уезжают";
     case "day": {
+      const chosen = myActions.nominate && seatsG.find(s => s.uid === myActions.nominate);
       if (preset && preset.speech_order) {
         const sp = seatsG.find(s => s.uid === currentSpeaker());
         if (!sp) return "Обсуждение";
-        return sp.uid === me.id
-          ? "🎤 Твоя речь! Клик по игроку — выставить, затем «Передать слово»"
-          : `Говорит #${sp.seat} ${sp.nickname} — слушаем, микрофоны выключены`;
+        if (sp.uid !== me.id) return `Говорит #${sp.seat} ${sp.nickname} — слушаем, микрофоны выключены`;
+        return chosen
+          ? `🎤 Твоя речь. Ты выставил #${chosen.seat} ${chosen.nickname} — сменить нельзя`
+          : "🎤 Твоя речь! Клик по игроку — выставить (выбор окончательный), затем «Передать слово»";
       }
-      return "Обсуждайте! Клик по игроку — выставить на голосование";
+      return chosen
+        ? `Ты выставил #${chosen.seat} ${chosen.nickname} — выбор окончательный, сменить нельзя`
+        : "Обсуждайте! Клик по игроку — выставить на голосование (выбор окончательный)";
     }
     case "voting": return "Тайное голосование: клик по кандидату с оранжевой рамкой";
     case "lastword": {
@@ -1056,6 +1060,7 @@ function render() {
     }
     if (game && !game.winner) {
       if (game.phase === "day" && noms.includes(p.uid)) badges.push('<span class="badge nom">выставлен</span>');
+      if (game.phase === "day" && myActions.nominate === p.uid) badges.push('<span class="badge vote">твой выбор ✓</span>');
       if (game.phase === "voting" && myActions.vote === p.uid) badges.push('<span class="badge vote">твой голос ✓</span>');
       if (game.phase === "night" && mafiaMarks[p.uid]) {
         const m = mafiaMarks[p.uid];
@@ -1073,7 +1078,7 @@ function render() {
     if (isOffline(p.uid)) cls.push("offline");
     if (game && game.phase === "voting" && cands.includes(p.uid)) cls.push("candidate");
     const clickable = inGame && my && my.alive && p.alive && (
-      (game.phase === "day" && p.uid !== me.id) ||
+      (game.phase === "day" && p.uid !== me.id && !myActions.nominate) ||
       (game.phase === "voting" && cands.includes(p.uid)) ||
       (game.phase === "night"));
     if (clickable) cls.push("clickable");
