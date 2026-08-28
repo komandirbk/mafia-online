@@ -852,6 +852,7 @@ async function onGame(g) {
   const phaseChanged = !game || game.phase !== g.phase;
   game = g;
   if (isNew) { roleShown = false; myActions = {}; mafiaMarks = {}; botDone = {}; lastDeaths = 0;
+    lastCheck = ""; $("logList").innerHTML = ""; finalRoles = {};
     bots.forEach(b => b.role = null);
     if (g.preset && Object.keys(g.preset).length) preset = g.preset;
     await fetchSeats(); await fetchRole();
@@ -1147,7 +1148,7 @@ const CAUSE_LOG = { voted:"выбывает по голосованию", night:
 function renderLog() {
   const box = $("logBox"), list = $("logList");
   const entries = (game && game.state && game.state.log) || [];
-  if (!game || !entries.length) { box.style.display = "none"; return; }
+  if (!game || !entries.length) { list.innerHTML = ""; box.style.display = "none"; return; }   // новая партия — чистая хроника
   box.style.display = "block";
   list.innerHTML = entries.slice().reverse().map(e => {
     let text = "";
@@ -1416,7 +1417,7 @@ async function rematch() {
   const { data } = await sb.rpc("restart_game", { p_room: room.room_id });
   if (data && data.error) { $("endBoard").textContent = "⚠ " + data.error; $("rematchBtn").disabled = false; return; }
   game = null; endShown = false; finalRoles = {}; myRole = null; seatsG = []; hostRoles = {};
-  closeEnd(); render(); renderSettings();
+  closeEnd(); render(); renderLog(); renderSettings();
   const { data: sg } = await sb.rpc("start_game", { p_room: room.room_id });
   if (sg && sg.error) $("phaseSub").textContent = "⚠ " + ruErr(sg.error);
   else { await checkGame(); render(); }
