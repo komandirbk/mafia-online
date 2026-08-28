@@ -140,6 +140,7 @@
   .set-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin-top:14px; align-items:start; }
   .set-group h5 { font:600 10.5px var(--sans); text-transform:uppercase; letter-spacing:.22em;
     color:var(--gold-dim); margin-bottom:8px; }
+  .set-row select { text-overflow:ellipsis; }
   .set-rows { display:flex; flex-direction:column; gap:6px; }
   .set-row {
     display:flex; align-items:center; justify-content:space-between; gap:12px;
@@ -449,9 +450,9 @@ const PRESETS = {
     allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4, free_discussion_seconds:60, last_word_for_night_victims:true,
     roles:{don:true, sheriff:true, doctor:true, maniac:true, lover:false} }
 };
-const TIE_RU = { revoteThenNobody:"переголосовка, затем никто не выбывает",
-  revoteThenJointDeath:"переголосовка, затем оба выбывают",
-  revoteThenAllRaise:"переголосовка, затем подъём всех" };
+const TIE_RU = { revoteThenNobody:"переголосовка → никто не уезжает",
+  revoteThenJointDeath:"переголосовка → уезжают оба",
+  revoteThenAllRaise:"переголосовка → подъём всех" };
 const ROLE_SHORT = { don:"дон", mafia:"мафия", sheriff:"шериф", doctor:"доктор",
   maniac:"маньяк", lover:"любовница", civilian:"мирный" };
 
