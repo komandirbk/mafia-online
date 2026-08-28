@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мафия Онлайн</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<style>
+  :root {
+    --bg:#12100e; --surface:#1d1a17; --elevated:#282420; --text:#f0ead9;
+    --muted:#9c937f; --gold:#d4af37; --accent:#b3382e; --green:#32b071; --divider:#3a352e;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:16px/1.5 -apple-system,"SF Pro Text",Segoe UI,sans-serif; min-height:100vh; }
+  .wrap { max-width:960px; margin:0 auto; padding:24px 16px; }
+  h1 { font-family:Georgia,serif; color:var(--gold); font-size:30px; text-align:center; margin:24px 0 6px; }
+  .tagline { text-align:center; color:var(--muted); font-size:14px; margin-bottom:28px; }
+  .card { background:var(--surface); border:1px solid var(--divider); border-radius:16px; padding:20px; margin-bottom:14px; }
+  .home { max-width:400px; margin:0 auto; }
+  input, select { width:100%; padding:12px 14px; margin-bottom:10px; background:var(--elevated); border:1px solid var(--divider); border-radius:10px; color:var(--text); font-size:16px; }
+  input::placeholder { color:var(--muted); }
+  button { background:var(--gold); color:#1d1a17; border:0; border-radius:10px; padding:12px 18px; font-weight:700; cursor:pointer; font-size:15px; width:100%; }
+  button.ghost { background:var(--elevated); color:var(--muted); border:1px solid var(--divider); }
+  button.danger { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:10px; }
+  .err { color:var(--accent); font-size:13px; min-height:18px; margin-bottom:6px; text-align:center; }
+  .divider { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; margin:16px 0; }
+  .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--divider); }
+  #roomView { display:none; }
+  .room-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  .code-pill { font-family:Georgia,serif; font-size:26px; letter-spacing:.35em; color:var(--gold); background:var(--surface); border:1px dashed var(--gold); border-radius:12px; padding:8px 18px 8px 24px; }
+  .mode-tag { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); background:var(--elevated); border-radius:99px; padding:4px 10px; }
+  .players { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; }
+  .tile { position:relative; background:var(--elevated); border:1px solid var(--divider); border-radius:14px; aspect-ratio:4/3; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .tile video { width:100%; height:100%; object-fit:cover; }
+  .tile .ph { font-family:Georgia,serif; font-size:38px; color:var(--gold); opacity:.7; }
+  .tile .name { position:absolute; left:8px; bottom:8px; background:rgba(0,0,0,.55); border-radius:8px; padding:3px 9px; font-size:13px; font-weight:600; }
+  .tile .name .crown { color:var(--gold); }
+  .hint { color:var(--muted); font-size:13px; text-align:center; padding:10px; }
+  .toolbar { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+  .toolbar button { width:auto; flex:1; min-width:140px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎩 Мафия Онлайн</h1>
+  <div class="tagline">город засыпает — а вы подключаетесь</div>
+
+  <div id="homeView" class="home card">
+    <div class="err" id="homeErr"></div>
+    <input id="nickname" maxlength="24" placeholder="Твоё имя в игре" autocomplete="nickname">
+    <div id="joinBlock">
+      <input id="joinCode" maxlength="6" placeholder="Код комнаты (6 символов)" style="text-transform:uppercase">
+      <button onclick="join()">Войти в комнату</button>
+    </div>
+    <div class="divider">или</div>
+    <select id="mode">
+      <option value="auto">Автоведущий — играют все</option>
+      <option value="host">Живой ведущий — я веду игру</option>
+    </select>
+    <button class="ghost" onclick="create()">Создать комнату</button>
+  </div>
+
+  <div id="roomView">
+    <div class="card">
+      <div class="room-head">
+        <div class="code-pill" id="roomCode">······</div>
+        <span class="mode-tag" id="roomMode"></span>
+        <div class="row" style="flex:1; justify-content:flex-end; min-width:200px;">
+          <button class="ghost" style="width:auto" onclick="copyLink()" id="copyBtn">Скопировать приглашение</button>
+          <button class="danger" style="width:auto" onclick="leave()">Выйти</button>
+        </div>
+      </div>
+      <div class="players" id="playersGrid"></div>
+      <div class="hint" id="videoHint"></div>
+      <div class="toolbar">
+        <button id="startBtn" style="display:none" disabled>Начать игру (скоро)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://ktypybmjiwaltdokdmqm.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_QNh7vPkGwnLd-2xxaW--vQ_c3ehx8rN";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let me = null;            // auth user
+let room = null;          // {room_id, code, mode}
+let players = [];
+let channel = null;
+let lk = { room: null, connected: false };
+
+const $ = id => document.getElementById(id);
+$("nickname").value = localStorage.getItem("nick") || "";
+
+async function ensureAuth() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) { me = data.session.user; return; }
+  const { data: anon, error } = await sb.auth.signInAnonymously();
+  if (error) throw new Error("Анонимный вход не включён: " + error.message);
+  me = anon.user;
+}
+
+function nick() {
+  const n = $("nickname").value.trim();
+  if (!n) { $("homeErr").textContent = "Сначала введи имя"; return null; }
+  localStorage.setItem("nick", n);
+  return n;
+}
+
+async function create() {
+  const n = nick(); if (!n) return;
+  try {
+    await ensureAuth();
+    const { data, error } = await sb.rpc("create_room", { p_nickname: n, p_mode: $("mode").value });
+    if (error || data.error) throw new Error(error?.message || data.error);
+    enterRoom({ room_id: data.room_id, code: data.code, mode: $("mode").value });
+  } catch (e) { $("homeErr").textContent = e.message; }
+}
+
+async function join(codeArg) {
+  const n = nick(); if (!n) return;
+  const code = (codeArg || $("joinCode").value).trim().toUpperCase();
+  if (code.length !== 6) { $("homeErr").textContent = "Код — 6 символов"; return; }
+  try {
+    await ensureAuth();
+    const { data, error } = await sb.rpc("join_room", { p_code: code, p_nickname: n });
+    if (error) throw new Error(error.message);
+    if (data.error === "not_found") throw new Error("Комната не найдена");
+    if (data.error === "full") throw new Error("Комната заполнена");
+    if (data.error) throw new Error(data.error);
+    enterRoom(data);
+  } catch (e) { $("homeErr").textContent = e.message; }
+}
+
+async function enterRoom(r) {
+  room = r;
+  history.replaceState(null, "", "?r=" + r.code);
+  $("homeView").style.display = "none";
+  $("roomView").style.display = "block";
+  $("roomCode").textContent = r.code;
+  $("roomMode").textContent = r.mode === "host" ? "живой ведущий" : "автоведущий";
+  await refreshPlayers();
+  subscribe();
+  connectVideo();
+}
+
+async function refreshPlayers() {
+  const { data } = await sb.from("room_players").select("*").eq("room_id", room.room_id).order("joined_at");
+  players = data || [];
+  renderPlayers();
+  const host = players.find(p => p.uid === me.id && p.is_host);
+  $("startBtn").style.display = host ? "block" : "none";
+}
+
+function subscribe() {
+  if (channel) sb.removeChannel(channel);
+  channel = sb.channel("room:" + room.room_id)
+    .on("postgres_changes", { event: "*", schema: "public", table: "room_players", filter: "room_id=eq." + room.room_id }, refreshPlayers)
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "rooms", filter: "id=eq." + room.room_id }, p => {
+      if (p.new.status === "finished") { alert("Ведущий закрыл комнату"); leave(true); }
+    })
+    .subscribe();
+}
+
+function renderPlayers() {
+  const grid = $("playersGrid");
+  grid.innerHTML = players.map(p => `
+    <div class="tile" id="tile-${p.uid}">
+      <div class="ph">${(p.nickname || "?").slice(0, 1).toUpperCase()}</div>
+      <div class="name">${p.is_host ? '<span class="crown">♛</span> ' : ""}${p.nickname}${p.uid === me.id ? " (ты)" : ""}</div>
+    </div>`).join("");
+  if (lk.connected) attachAllTracks();
+}
+
+function copyLink() {
+  navigator.clipboard.writeText(location.origin + location.pathname + "?r=" + room.code);
+  $("copyBtn").textContent = "Скопировано ✓";
+  setTimeout(() => $("copyBtn").textContent = "Скопировать приглашение", 1500);
+}
+
+async function leave(silent) {
+  try { if (!silent) await sb.rpc("leave_room", { p_room: room.room_id }); } catch (e) {}
+  if (lk.room) { lk.room.disconnect(); lk.room = null; lk.connected = false; }
+  if (channel) sb.removeChannel(channel);
+  room = null;
+  history.replaceState(null, "", location.pathname);
+  $("roomView").style.display = "none";
+  $("homeView").style.display = "block";
+}
+
+// --- Видео (LiveKit). До настройки ключей показывает подсказку. ---
+async function connectVideo() {
+  const { data, error } = await sb.rpc("livekit_token", { p_room: room.room_id }).catch(() => ({ error: true }));
+  if (error || !data || !data.token) {
+    $("videoHint").textContent = "Видео и аудио появятся после подключения LiveKit — пока можно созвониться в Discord.";
+    return;
+  }
+  try {
+    lk.room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+    await lk.room.connect(data.url, data.token);
+    await lk.room.localParticipant.enableCameraAndMicrophone();
+    lk.connected = true;
+    $("videoHint").textContent = "";
+    lk.room.on("trackSubscribed", attachAllTracks);
+    lk.room.on("participantConnected", attachAllTracks);
+    attachAllTracks();
+  } catch (e) {
+    $("videoHint").textContent = "Не удалось подключить видео: " + e.message;
+  }
+}
+
+function attachTrackTo(uid, participant) {
+  const tile = document.getElementById("tile-" + uid);
+  if (!tile) return;
+  participant.videoTrackPublications.forEach(pub => {
+    if (pub.track && !tile.querySelector("video")) {
+      const el = pub.track.attach();
+      tile.prepend(el);
+      tile.querySelector(".ph").style.display = "none";
+    }
+  });
+  participant.audioTrackPublications.forEach(pub => {
+    if (pub.track && !participant.isLocal) pub.track.attach();
+  });
+}
+
+function attachAllTracks() {
+  if (!lk.room) return;
+  attachTrackTo(me.id, lk.room.localParticipant);
+  lk.room.remoteParticipants.forEach(p => attachTrackTo(p.identity, p));
+}
+
+// Автовход по ссылке-приглашению
+const inviteCode = new URLSearchParams(location.search).get("r");
+if (inviteCode) {
+  $("joinCode").value = inviteCode.toUpperCase();
+  if ($("nickname").value) join(inviteCode);
+}
+</script>
+</body>
+</html>
