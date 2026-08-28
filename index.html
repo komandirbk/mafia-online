@@ -199,6 +199,7 @@
         <button id="donModeBtn" class="ghost" style="display:none" onclick="toggleDonMode()"></button>
         <button id="airShotBtn" class="ghost" style="display:none" onclick="airShot()">💨 Выстрел в воздух</button>
         <button id="skipCheckBtn" class="ghost" style="display:none" onclick="skipDonCheck()">🚫 Пропустить проверку</button>
+        <button id="skipNightBtn" class="ghost" style="display:none" onclick="skipNight()">🚫 Пропустить ход</button>
         <button id="raiseYesBtn" style="display:none" onclick="raise(true)">✋ Поднять руку — за</button>
         <button id="raiseNoBtn" class="ghost" style="display:none" onclick="raise(false)">Против</button>
       </div>
@@ -738,6 +739,14 @@ async function skipDonCheck() {
   if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
   myActions.don_check = "skip"; sfx("tick"); render();
 }
+const NIGHT_KIND = { sheriff:"sheriff_check", doctor:"doctor_heal", maniac:"maniac_kill", lover:"lover_block" };
+async function skipNight() {
+  const kind = NIGHT_KIND[myRole && myRole.role];
+  if (!kind) return;
+  const { data } = await sb.rpc("act", { p_game: game.id, p_kind: kind, p_target: null });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  myActions[kind] = "skip"; sfx("tick"); render();
+}
 async function raise(yes) {
   const { data } = await sb.rpc("act", { p_game: game.id, p_kind: yes ? "raise_yes" : "raise_no" });
   if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
@@ -904,6 +913,7 @@ function renderLog() {
     else if (e.t === "revote") text = "Ничья — переголосовка";
     else if (e.t === "tie_nobody") text = "Ничья и после переголосовки — никто не выбывает";
     else if (e.t === "allraise") text = `Подъём всех: «за» ${e.yes} из ${e.alive}`;
+    else if (e.t === "renominate") text = `↔️ <b>${e.who}</b> переставил выставление: ${e.was} → <b>${e.whom}</b>`;
     else if (e.t === "foul") text = `⚠ <b>${e.who}</b> получает фол (${e.n})`;
     else if (e.t === "end") text = "🏁 " + ({red:"Победа мирных", black:"Победа мафии", maniac:"Победил маньяк"}[e.winner] || "Игра окончена");
     else if (e.t === "death") text = `☠ <b>${e.who}</b> ${CAUSE_LOG[e.cause] || e.cause}` + (e.role ? ` (${(ROLE_RU[e.role]||[e.role])[0]})` : "");
@@ -1009,6 +1019,13 @@ function render() {
   const donChecking = inGame && game.phase === "night" && my && my.alive && myRole && myRole.role === "don" && donMode === "check";
   $("skipCheckBtn").style.display = donChecking ? "block" : "none";
   $("skipCheckBtn").textContent = myActions.don_check === "skip" ? "🚫 Проверка пропущена ✓" : "🚫 Пропустить проверку";
+  const nightKind = NIGHT_KIND[myRole && myRole.role];
+  const canSkipNight = inGame && game.phase === "night" && my && my.alive && !!nightKind;
+  $("skipNightBtn").style.display = canSkipNight ? "block" : "none";
+  $("skipNightBtn").textContent = canSkipNight && myActions[nightKind] === "skip"
+    ? "🚫 Ход пропущен ✓"
+    : { sheriff:"🚫 Пропустить проверку", doctor:"🚫 Никого не лечить",
+        maniac:"🚫 Не убивать", lover:"🚫 Никого не отвлекать" }[myRole && myRole.role] || "🚫 Пропустить ход";
   const inRaise = inGame && game.phase === "allraise" && my && my.alive;
   $("raiseYesBtn").style.display = inRaise ? "block" : "none";
   $("raiseNoBtn").style.display = inRaise ? "block" : "none";
