@@ -194,7 +194,9 @@ async function leave(silent) {
 
 // --- Видео (LiveKit). До настройки ключей показывает подсказку. ---
 async function connectVideo() {
-  const { data, error } = await sb.rpc("livekit_token", { p_room: room.room_id }).catch(() => ({ error: true }));
+  let data, error;
+  try { ({ data, error } = await sb.rpc("livekit_token", { p_room: room.room_id })); }
+  catch (e) { error = e; }
   if (error || !data || !data.token) {
     $("videoHint").textContent = "Видео и аудио появятся после подключения LiveKit — пока можно созвониться в Discord.";
     return;
