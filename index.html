@@ -1060,6 +1060,7 @@ function currentSpeaker() {
 
 let avState = { mic:null, cam:null, mMic:null, mCam:null };
 const audioEls = new Map();
+const weakLink = new Set();
 function applyAV() {
   muteForbiddenVoices();                 // чужие голоса глушим независимо от своего подключения
   if (!lk.room || !lk.connected) return;
@@ -1089,7 +1090,7 @@ async function syncMafiaRoom() {
     const { data, error } = await sb.rpc("livekit_token", { p_room: room.room_id, p_kind: "mafia" });
     if (error || !data || !data.token) return;
     try {
-      lkMafia.room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+      lkMafia.room = new LivekitClient.Room(roomOptions());
       await lkMafia.room.connect(data.url, data.token);
       await lkMafia.room.localParticipant.enableCameraAndMicrophone();
       lkMafia.connected = true;
@@ -1307,6 +1308,7 @@ function render() {
     const badges = [];
     if (p.narrator) badges.push('<span class="badge nom">ведущий 🎙</span>');
     if (isOffline(p.uid)) badges.push('<span class="badge">📴 нет связи</span>');
+    else if (weakLink.has(p.uid)) badges.push('<span class="badge">📶 слабая связь</span>');
     if (p.fouls) badges.push(`<span class="badge mafi">⚠ фолы: ${p.fouls}</span>`);
     if (game && game.phase === "zeronight" && myRole && myRole.team &&
         myRole.team.some(t => t.nickname === p.nickname && t.seat === p.seat)) {
@@ -1473,6 +1475,27 @@ async function leave(silent) {
   $("authView").style.display = me ? "none" : "block";
 }
 
+function roomOptions() {
+  // Плитки маленькие: 360p с двумя слоями достаточно, зато канал свободен для голоса.
+  // adaptiveStream отписывает невидимые камеры, dynacast не гонит лишние слои вверх —
+  // без них при 8+ игроках звук начинал «роботизировать».
+  const V = LivekitClient.VideoPresets, A = LivekitClient.AudioPresets;
+  return {
+    adaptiveStream: true,
+    dynacast: true,
+    videoCaptureDefaults: { resolution: V.h360.resolution },
+    audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    publishDefaults: {
+      simulcast: true,
+      videoSimulcastLayers: [V.h180, V.h360],
+      videoEncoding: { maxBitrate: 400_000, maxFramerate: 24 },
+      audioPreset: A ? A.speech : undefined,
+      dtx: true,        // тишина не занимает канал
+      red: true,        // избыточность: терпит потерю пакетов без «робота»
+      stopMicTrackOnMute: false,
+    },
+  };
+}
 async function connectVideo() {
   let data, error;
   // всегда указываем тип комнаты: иначе вызов неоднозначен, если в базе осталась старая версия функции
@@ -1485,7 +1508,7 @@ async function connectVideo() {
     return;
   }
   try {
-    lk.room = new LivekitClient.Room({ adaptiveStream:false, dynacast:false });
+    lk.room = new LivekitClient.Room(roomOptions());
     lk.room.on("reconnected", () => { avState = { mic:null, cam:null, mMic:null, mCam:null }; applyAV(); });
     lk.room.on("disconnected", () => {
       lk.connected = false;
@@ -1497,6 +1520,11 @@ async function connectVideo() {
     lk.connected = true;
     avState = { mic:null, cam:null, mMic:null, mCam:null };
     $("videoHint").textContent = "";
+    lk.room.on("connectionQualityChanged", (q, p) => {
+      if (!p) return;
+      if (q === "poor") weakLink.add(p.identity); else weakLink.delete(p.identity);
+      render();
+    });
     ["trackSubscribed","trackUnsubscribed","trackPublished","trackUnpublished",
      "trackMuted","trackUnmuted","participantConnected","participantDisconnected",
      "localTrackPublished","localTrackUnpublished"].forEach(ev => lk.room.on(ev, attachAllTracks));
@@ -1526,13 +1554,21 @@ function attachTrackTo(uid, participant) {
     if (pub.track && !pub.isMuted && pub.track.mediaStreamTrack &&
         pub.track.mediaStreamTrack.readyState === "live") live = pub.track;
   });
-  const video = tile.querySelector("video");
+  let video = tile.querySelector("video");
   if (live) {
-    if (!video) { tile.prepend(live.attach()); }
+    // элемент переиспользуем: при адаптивном стриме трек переподписывается,
+    // а пересоздание <video> — это как раз то мигание, от которого мы уходим
+    if (!video) {
+      video = document.createElement("video");
+      video.autoplay = true; video.playsInline = true; video.muted = true;
+      tile.prepend(video);
+    }
+    if (video.dataset.sid !== live.sid) { live.attach(video); video.dataset.sid = live.sid || "1"; }
+    video.style.display = "";
     if (ph) ph.style.display = "none";
   } else {
-    // камеры нет (выключил, отписался, вышел) — возвращаем букву вместо пустого прямоугольника
-    if (video) video.remove();
+    // камеры нет (выключил, отписался, вышел) — показываем букву, элемент не трогаем
+    if (video) { video.style.display = "none"; delete video.dataset.sid; }
     if (ph) ph.style.display = "";
   }
   participant.audioTrackPublications.forEach(pub => {
