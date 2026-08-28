@@ -1089,21 +1089,32 @@ function renderMafiaRoom() {
   if (!lkMafia.room || !lkMafia.connected) { box.style.display = "none"; return; }
   box.style.display = "block";
   const parts = [lkMafia.room.localParticipant, ...lkMafia.room.remoteParticipants.values()];
-  grid.innerHTML = parts.map(p => {
+  const wanted = parts.map(p => "mtile-" + p.identity);
+  [...grid.children].forEach(el => { if (!wanted.includes(el.id)) el.remove(); });
+  parts.forEach((p, i) => {                       // плитки не пересоздаём — видео не должно моргать
     const nick = p.name || "мафия";
-    return `<div class="tile" id="mtile-${p.identity}">
-      <div class="ph">${nick.slice(0,1).toUpperCase()}</div>
-      <div class="name">${nick}${p.isLocal ? " (ты)" : ""}</div></div>`;
-  }).join("");
-  parts.forEach(p => {
-    const tile = document.getElementById("mtile-" + p.identity);
-    if (!tile) return;
+    let tile = document.getElementById("mtile-" + p.identity);
+    if (!tile) {
+      tile = document.createElement("div");
+      tile.className = "tile"; tile.id = "mtile-" + p.identity;
+      tile.innerHTML = `<div class="ph"></div><div class="name"></div>`;
+      grid.appendChild(tile);
+    }
+    if (grid.children[i] !== tile) grid.insertBefore(tile, grid.children[i] || null);
+    const letter = nick.slice(0,1).toUpperCase();
+    const ph = tile.querySelector(".ph");
+    if (ph.textContent !== letter) ph.textContent = letter;
+    const nameHTML = nick + (p.isLocal ? " (ты)" : "");
+    const nameBox = tile.querySelector(".name");
+    if (nameBox.textContent !== nameHTML) nameBox.textContent = nameHTML;
+    let live = null;
     p.videoTrackPublications.forEach(pub => {
-      if (pub.track && !tile.querySelector("video")) {
-        tile.prepend(pub.track.attach());
-        tile.querySelector(".ph").style.display = "none";
-      }
+      if (pub.track && !pub.isMuted && pub.track.mediaStreamTrack &&
+          pub.track.mediaStreamTrack.readyState === "live") live = pub.track;
     });
+    const video = tile.querySelector("video");
+    if (live) { if (!video) tile.prepend(live.attach()); ph.style.display = "none"; }
+    else { if (video) video.remove(); ph.style.display = ""; }
     p.audioTrackPublications.forEach(pub => { if (pub.track && !p.isLocal) pub.track.attach(); });
   });
 }
@@ -1263,13 +1274,15 @@ function render() {
   }
   const noms = game ? (game.state.nominations || []) : [];
   const cands = game ? (game.state.candidates || []) : [];
-  // видеоэлементы переживают перерисовку: иначе камера моргает при каждом обновлении
-  const keepVideo = new Map();
-  grid.querySelectorAll(".tile video").forEach(v => {
-    const host = v.closest(".tile");
-    if (host) keepVideo.set(host.id, v);
+
+  // Плитки не пересоздаются: video-элемент живёт своей жизнью, иначе камера моргает
+  // при каждом обновлении. Обновляем только классы, бейджи, имя и кнопки ведущего.
+  const wanted = list.map(p => p.uid);
+  [...grid.children].forEach(el => {
+    if (!wanted.includes(el.id.replace("tile-", ""))) el.remove();
   });
-  grid.innerHTML = list.map(p => {
+
+  list.forEach((p, i) => {
     const host = players.find(x => x.uid === p.uid && x.is_host);
     const badges = [];
     if (p.narrator) badges.push('<span class="badge nom">ведущий 🎙</span>');
@@ -1320,18 +1333,38 @@ function render() {
       (inGame && p.alive ? `<button onclick="foul('${p.uid}',1)" title="Фол">⚠</button>` +
                 `<button onclick="foul('${p.uid}',-1)" title="Снять фол">−</button>` : "") +
       `<button onclick="kick('${p.uid}','${(p.nickname||"").replace(/'/g,"")}')" title="Удалить из игры">✕</button></div>` : "";
-    return `<div class="${cls.join(" ")}" id="tile-${p.uid}" ${clickable ? `onclick="tileClick('${p.uid}')"` : ""}>
-      ${ctl}
-      <div class="ph">${(p.nickname||"?").slice(0,1).toUpperCase()}</div>
-      <div class="badges">${badges.join("")}</div>
-      <div class="name">${host ? '<span class="crown">♛</span> ' : ""}${p.seat ? "#"+p.seat+" " : ""}${p.nickname}${p.uid===me.id?" (ты)":""}</div>
-    </div>`;
-  }).join("");
-  keepVideo.forEach((video, tileId) => {
-    const tile = document.getElementById(tileId);
-    if (tile && !tile.querySelector("video")) {
-      tile.prepend(video);
-      const ph = tile.querySelector(".ph"); if (ph) ph.style.display = "none";
+    const nameHTML = `${host ? '<span class="crown">♛</span> ' : ""}${p.seat ? "#"+p.seat+" " : ""}` +
+      `${p.nickname}${p.uid === me.id ? " (ты)" : ""}`;
+
+    let tile = document.getElementById("tile-" + p.uid);
+    if (!tile) {
+      tile = document.createElement("div");
+      tile.id = "tile-" + p.uid;
+      tile.innerHTML = `<div class="ph"></div><div class="badges"></div><div class="name"></div>`;
+      grid.appendChild(tile);
+    }
+    if (grid.children[i] !== tile) grid.insertBefore(tile, grid.children[i] || null);
+
+    const clsStr = cls.join(" ");
+    if (tile.className !== clsStr) tile.className = clsStr;
+    tile.onclick = clickable ? () => tileClick(p.uid) : null;
+
+    const ph = tile.querySelector(".ph");
+    const letter = (p.nickname || "?").slice(0, 1).toUpperCase();
+    if (ph.textContent !== letter) ph.textContent = letter;
+
+    const badgeBox = tile.querySelector(".badges");
+    const badgeHTML = badges.join("");
+    if (badgeBox.innerHTML !== badgeHTML) badgeBox.innerHTML = badgeHTML;
+
+    const nameBox = tile.querySelector(".name");
+    if (nameBox.innerHTML !== nameHTML) nameBox.innerHTML = nameHTML;
+
+    const oldCtl = tile.querySelector(".ctl");
+    if (!ctl) { if (oldCtl) oldCtl.remove(); }
+    else if (!oldCtl || oldCtl.outerHTML !== ctl.replace(/^<div class="ctl"/, '<div class="ctl"')) {
+      if (oldCtl) oldCtl.remove();
+      tile.insertAdjacentHTML("afterbegin", ctl);
     }
   });
   if (lk.connected) attachAllTracks();
@@ -1432,7 +1465,7 @@ async function connectVideo() {
     return;
   }
   try {
-    lk.room = new LivekitClient.Room({ adaptiveStream:true, dynacast:true });
+    lk.room = new LivekitClient.Room({ adaptiveStream:false, dynacast:false });
     lk.room.on("disconnected", () => {
       lk.connected = false;
       $("videoHint").innerHTML = "Связь с видеосервером прервалась. " +
@@ -1443,8 +1476,9 @@ async function connectVideo() {
     lk.connected = true;
     avState = { mic:null, cam:null, mMic:null, mCam:null };
     $("videoHint").textContent = "";
-    lk.room.on("trackSubscribed", attachAllTracks);
-    lk.room.on("participantConnected", attachAllTracks);
+    ["trackSubscribed","trackUnsubscribed","trackPublished","trackUnpublished",
+     "trackMuted","trackUnmuted","participantConnected","participantDisconnected",
+     "localTrackPublished","localTrackUnpublished"].forEach(ev => lk.room.on(ev, attachAllTracks));
     lk.room.on("activeSpeakersChanged", sps => {
       speaking = new Set((sps || []).map(p => p.identity));
       document.querySelectorAll(".tile").forEach(t => {
@@ -1465,12 +1499,21 @@ async function connectVideo() {
 function attachTrackTo(uid, participant) {
   const tile = document.getElementById("tile-" + uid);
   if (!tile) return;
+  const ph = tile.querySelector(".ph");
+  let live = null;
   participant.videoTrackPublications.forEach(pub => {
-    if (pub.track && !tile.querySelector("video")) {
-      tile.prepend(pub.track.attach());
-      tile.querySelector(".ph").style.display = "none";
-    }
+    if (pub.track && !pub.isMuted && pub.track.mediaStreamTrack &&
+        pub.track.mediaStreamTrack.readyState === "live") live = pub.track;
   });
+  const video = tile.querySelector("video");
+  if (live) {
+    if (!video) { tile.prepend(live.attach()); }
+    if (ph) ph.style.display = "none";
+  } else {
+    // камеры нет (выключил, отписался, вышел) — возвращаем букву вместо пустого прямоугольника
+    if (video) video.remove();
+    if (ph) ph.style.display = "";
+  }
   participant.audioTrackPublications.forEach(pub => {
     if (pub.track && !participant.isLocal) pub.track.attach();
   });
