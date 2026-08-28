@@ -357,7 +357,11 @@ async function afterLogin() {
   const { data } = await sb.auth.getSession();
   if (!data.session) return false;
   // старые анонимные сессии (боты, прошлые версии) больше не годятся — нужен аккаунт
-  if (data.session.user.is_anonymous) { await sb.auth.signOut(); me = null; return false; }
+  if (data.session.user.is_anonymous || !data.session.user.email) {
+    await sb.auth.signOut(); me = null;
+    $("authView").style.display = "block"; $("homeView").style.display = "none";
+    return false;
+  }
   me = data.session.user;
   const { data: prof } = await sb.rpc("my_profile");
   myNick = (prof && prof.nickname) || "";
