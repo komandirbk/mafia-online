@@ -187,12 +187,17 @@
   }
   .tile video { width:100%; height:100%; object-fit:cover; }
   .tile .ph { font-family:var(--serif); font-size:40px; font-weight:700; color:var(--gold); opacity:.35; }
-  .tile .name { position:absolute; left:8px; bottom:8px; background:rgba(4,7,14,.78);
-    border:1px solid var(--line-soft); border-radius:8px; padding:3px 9px; font-size:12.5px; font-weight:600; z-index:3; }
+  .tile .name { position:absolute; left:8px; bottom:8px; max-width:calc(100% - 100px);
+    background:rgba(4,7,14,.82); border:1px solid var(--line-soft); border-radius:8px;
+    padding:3px 9px; font-size:12.5px; font-weight:600; z-index:3;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .tile .name .crown { color:var(--gold); }
-  .tile .badges { position:absolute; top:6px; left:6px; right:6px; display:flex; gap:4px; flex-wrap:wrap; z-index:3; }
+  .tile .badges { position:absolute; top:6px; left:6px; right:6px; display:flex; gap:4px 5px;
+    flex-wrap:wrap; align-content:flex-start; z-index:3; max-height:calc(100% - 46px); overflow:hidden; }
   .badge { font-size:10.5px; font-weight:700; border-radius:99px; padding:2px 8px;
-    background:rgba(4,7,14,.8); letter-spacing:.02em; }
+    background:rgba(4,7,14,.85); letter-spacing:.02em; white-space:nowrap; max-width:100%;
+    overflow:hidden; text-overflow:ellipsis; }
+  .badge.role { font-size:11px; padding:3px 9px; }
   .badge.nom { color:var(--amber); border:1px solid rgba(232,162,74,.55); }
   .badge.vote { color:var(--jade); border:1px solid rgba(79,178,134,.5); }
   .badge.mafi { color:var(--blood); border:1px solid rgba(195,74,69,.5); }
@@ -206,7 +211,7 @@
   .tile.debrief { border-color:rgba(245,212,134,.28); }
   .tile.dead::after { content:"☠"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     font-size:52px; color:rgba(231,236,245,.5); background:rgba(4,6,12,.78); z-index:2; }
-  .tile .ctl { position:absolute; top:6px; right:6px; display:flex; gap:4px; z-index:4; }
+  .tile .ctl { position:absolute; bottom:6px; right:6px; display:flex; gap:4px; z-index:4; }
   .tile .ctl button { width:auto; padding:2px 7px; font-size:12px; background:rgba(4,7,14,.85); color:var(--muted);
     border:1px solid var(--line-soft); border-radius:8px; box-shadow:none; }
   .tile .ctl button:hover { color:var(--gold); border-color:var(--gold-dim); }
@@ -456,8 +461,8 @@ const PRESETS = {
 const TIE_RU = { revoteThenNobody:"переголосовка → никто не уезжает",
   revoteThenJointDeath:"переголосовка → уезжают оба",
   revoteThenAllRaise:"переголосовка → подъём всех" };
-const ROLE_SHORT = { don:"дон", mafia:"мафия", sheriff:"шериф", doctor:"доктор",
-  maniac:"маньяк", lover:"любовница", civilian:"мирный" };
+const ROLE_SHORT = { don:"Дон", mafia:"Мафия", sheriff:"Шериф", doctor:"Доктор",
+  maniac:"Маньяк", lover:"Любовница", civilian:"Мирный" };
 
 let me=null, room=null, players=[], channel=null;
 let lk={room:null,connected:false};
@@ -778,7 +783,7 @@ function renderSettings() {
 }
 
 function settingsSummary() {
-  const on = Object.entries(preset.roles).filter(([, v]) => v).map(([k]) => ROLE_SHORT[k]).join(", ");
+  const on = Object.entries(preset.roles).filter(([, v]) => v).map(([k]) => ROLE_SHORT[k].toLowerCase()).join(", ");
   return `<b>${preset.name}</b><br>роли: ${on || "только мафия"}<br>` +
     `день ${preset.day_seconds_per_player}с/игрока · ночь ${preset.night_step_seconds}с/роль · последнее слово ${preset.last_word_seconds}с<br>` +
     `ничья: ${TIE_RU[preset.tie]}${preset.speech_order ? " · речь по кругу" : ""}` +
@@ -795,7 +800,7 @@ async function updateCompPreview() {
   const counts = {};
   data.forEach(r => counts[r] = (counts[r] || 0) + 1);
   $("compPreview").innerHTML = `<b>Состав на ${n} игроков:</b> ` +
-    Object.entries(counts).map(([r, c]) => `${ROLE_SHORT[r]}${c > 1 ? " ×" + c : ""}`).join(", ");
+    Object.entries(counts).map(([r, c]) => `${ROLE_SHORT[r].toLowerCase()}${c > 1 ? " ×" + c : ""}`).join(", ");
 }
 
 function subscribe() {
@@ -1035,14 +1040,16 @@ function currentSpeaker() {
   return game.state.speakers[game.state.speaker_i || 0] || null;
 }
 
+let avState = { mic:null, cam:null, mMic:null, mCam:null };
 function applyAV() {
   if (!lk.room || !lk.connected) return;
   const allowed = speechAllowed();
-  lk.room.localParticipant.setMicrophoneEnabled(allowed && micOn).catch(()=>{});
-  lk.room.localParticipant.setCameraEnabled(camOn).catch(()=>{});
+  const wantMic = !!(allowed && micOn), wantCam = !!camOn;
+  if (avState.mic !== wantMic) { avState.mic = wantMic; lk.room.localParticipant.setMicrophoneEnabled(wantMic).catch(()=>{}); }
+  if (avState.cam !== wantCam) { avState.cam = wantCam; lk.room.localParticipant.setCameraEnabled(wantCam).catch(()=>{}); }
   if (lkMafia.room && lkMafia.connected) {
-    lkMafia.room.localParticipant.setMicrophoneEnabled(micOn).catch(()=>{});
-    lkMafia.room.localParticipant.setCameraEnabled(camOn).catch(()=>{});
+    if (avState.mMic !== micOn) { avState.mMic = micOn; lkMafia.room.localParticipant.setMicrophoneEnabled(micOn).catch(()=>{}); }
+    if (avState.mCam !== camOn) { avState.mCam = camOn; lkMafia.room.localParticipant.setCameraEnabled(camOn).catch(()=>{}); }
   }
   const micB = $("micBtn"), camB = $("camBtn");
   micB.textContent = micOn ? (allowed ? "🎤" : "🎤🚫") : "🔇";
@@ -1256,6 +1263,12 @@ function render() {
   }
   const noms = game ? (game.state.nominations || []) : [];
   const cands = game ? (game.state.candidates || []) : [];
+  // видеоэлементы переживают перерисовку: иначе камера моргает при каждом обновлении
+  const keepVideo = new Map();
+  grid.querySelectorAll(".tile video").forEach(v => {
+    const host = v.closest(".tile");
+    if (host) keepVideo.set(host.id, v);
+  });
   grid.innerHTML = list.map(p => {
     const host = players.find(x => x.uid === p.uid && x.is_host);
     const badges = [];
@@ -1268,12 +1281,14 @@ function render() {
     }
     if (game && game.winner && finalRoles[p.uid]) {
       const rr = ROLE_RU[finalRoles[p.uid]] || ["?","❓"];
-      badges.push(`<span class="badge ${["mafia","don"].includes(finalRoles[p.uid]) ? "mafi" : "vote"}">${rr[1]} ${rr[0]}</span>`);
+      const short = ROLE_SHORT[finalRoles[p.uid]] || rr[0];
+      badges.push(`<span class="badge role ${["mafia","don"].includes(finalRoles[p.uid]) ? "mafi" : "vote"}">${rr[1]} ${short}</span>`);
       if (!p.alive) badges.push('<span class="badge">выбыл</span>');
     }
     if (amNarrator() && hostRoles[p.uid]) {
       const rr = ROLE_RU[hostRoles[p.uid]] || ["?","❓"];
-      badges.push(`<span class="badge ${["mafia","don"].includes(hostRoles[p.uid]) ? "mafi" : "vote"}">${rr[1]} ${rr[0]}</span>`);
+      const short = ROLE_SHORT[hostRoles[p.uid]] || rr[0];
+      badges.push(`<span class="badge role ${["mafia","don"].includes(hostRoles[p.uid]) ? "mafi" : "vote"}">${rr[1]} ${short}</span>`);
     }
     if (game && !game.winner) {
       if (game.phase === "day" && noms.includes(p.uid)) badges.push('<span class="badge nom">выставлен</span>');
@@ -1312,6 +1327,13 @@ function render() {
       <div class="name">${host ? '<span class="crown">♛</span> ' : ""}${p.seat ? "#"+p.seat+" " : ""}${p.nickname}${p.uid===me.id?" (ты)":""}</div>
     </div>`;
   }).join("");
+  keepVideo.forEach((video, tileId) => {
+    const tile = document.getElementById(tileId);
+    if (tile && !tile.querySelector("video")) {
+      tile.prepend(video);
+      const ph = tile.querySelector(".ph"); if (ph) ph.style.display = "none";
+    }
+  });
   if (lk.connected) attachAllTracks();
   $("settingsBox").style.display = (!game || game.winner) ? "block" : "none";
 
@@ -1419,6 +1441,7 @@ async function connectVideo() {
     await lk.room.connect(data.url, data.token);
     await lk.room.localParticipant.enableCameraAndMicrophone();
     lk.connected = true;
+    avState = { mic:null, cam:null, mMic:null, mCam:null };
     $("videoHint").textContent = "";
     lk.room.on("trackSubscribed", attachAllTracks);
     lk.room.on("participantConnected", attachAllTracks);
