@@ -886,7 +886,8 @@ function renderMafiaRoom() {
 // --- Хроника партии (только публичные факты) ---
 const LOG_PHASE_RU = { day:"☀️ День", night:"🌙 Ночь", voting:"🗳 Голосование", allraise:"✋ Подъём всех" };
 const CAUSE_LOG = { voted:"выбывает по голосованию", night:"убит ночью",
-  joint:"выбывает — обоюдное выбывание", allraise:"выбывает — подъём всех", removed:"удалён ведущим" };
+  joint:"выбывает — обоюдное выбывание", allraise:"выбывает — подъём всех", removed:"удалён ведущим",
+  fouls:"удалён за фолы", kicked:"удалён из игры" };
 function renderLog() {
   const box = $("logBox"), list = $("logList");
   const entries = (game && game.state && game.state.log) || [];
@@ -1058,7 +1059,7 @@ function render() {
     if (clickable) cls.push("clickable");
     const hostCtl = amHost() && p.uid !== me.id && !p.narrator;
     const ctl = hostCtl ? `<div class="ctl" onclick="event.stopPropagation()">` +
-      (inGame ? `<button onclick="foul('${p.uid}',1)" title="Фол">⚠</button>` +
+      (inGame && p.alive ? `<button onclick="foul('${p.uid}',1)" title="Фол">⚠</button>` +
                 `<button onclick="foul('${p.uid}',-1)" title="Снять фол">−</button>` : "") +
       `<button onclick="kick('${p.uid}','${(p.nickname||"").replace(/'/g,"")}')" title="Удалить из игры">✕</button></div>` : "";
     return `<div class="${cls.join(" ")}" id="tile-${p.uid}" ${clickable ? `onclick="tileClick('${p.uid}')"` : ""}>
