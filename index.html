@@ -509,9 +509,11 @@ async function refreshPlayers() {
 // --- Настройки лобби ---
 async function loadPreset() {
   const { data } = await sb.from("rooms").select("preset").eq("id", room.room_id).limit(1);
-  preset = (data && data[0] && data[0].preset && Object.keys(data[0].preset).length) ? data[0].preset
-         : JSON.parse(JSON.stringify(PRESETS.yard));
-  renderSettings();
+  const saved = data && data[0] && data[0].preset;
+  if (saved && Object.keys(saved).length) { preset = saved; renderSettings(); return; }
+  // у новой комнаты пресета ещё нет — фиксируем дворовую, чтобы клиент и сервер видели одно и то же
+  preset = JSON.parse(JSON.stringify(PRESETS.yard));
+  if (amHost()) await savePreset(); else renderSettings();
 }
 async function savePreset() {
   const { data, error } = await sb.rpc("update_room_preset", { p_room: room.room_id, p_preset: preset });
@@ -537,6 +539,7 @@ function renderSettings() {
   $("presetName").textContent = "— " + (preset.name || "Своя");
   const host = !!amHost();
   $("settingsHost").style.display = host ? "block" : "none";
+  if (!preset || !preset.roles) preset = JSON.parse(JSON.stringify(PRESETS.yard));
   $("settingsRO").style.display = host ? "none" : "block";
 
   if (!host) {
@@ -607,7 +610,7 @@ function subscribe() {
     .on("postgres_changes",{event:"*",schema:"public",table:"room_players",filter:"room_id=eq."+room.room_id}, refreshPlayers)
     .on("postgres_changes",{event:"*",schema:"public",table:"online_games",filter:"room_id=eq."+room.room_id}, p => { if (p.new?.id) onGame(p.new); })
     .on("postgres_changes",{event:"UPDATE",schema:"public",table:"rooms",filter:"id=eq."+room.room_id}, p => {
-      if (p.new.preset) { preset = p.new.preset; renderSettings(); }
+      if (p.new.preset && Object.keys(p.new.preset).length) { preset = p.new.preset; renderSettings(); }
       if (p.new.status === "finished" && !game) { leave(true); }
     })
     .subscribe(async (status) => {
@@ -647,7 +650,7 @@ async function onGame(g) {
   game = g;
   if (isNew) { roleShown = false; myActions = {}; mafiaMarks = {}; botDone = {}; lastDeaths = 0;
     bots.forEach(b => b.role = null);
-    if (g.preset) preset = g.preset;
+    if (g.preset && Object.keys(g.preset).length) preset = g.preset;
     await fetchSeats(); await fetchRole();
   }
   if (phaseChanged) { myActions = {}; mafiaMarks = {}; await fetchSeats(); applyAV(); syncMafiaRoom();
