@@ -161,6 +161,7 @@
         <button id="hostNextBtn" style="display:none" onclick="hostNext()">Следующая фаза →</button>
         <button id="donModeBtn" class="ghost" style="display:none" onclick="toggleDonMode()"></button>
         <button id="airShotBtn" class="ghost" style="display:none" onclick="airShot()">💨 Выстрел в воздух</button>
+        <button id="skipCheckBtn" class="ghost" style="display:none" onclick="skipDonCheck()">🚫 Пропустить проверку</button>
         <button id="raiseYesBtn" style="display:none" onclick="raise(true)">✋ Поднять руку — за</button>
         <button id="raiseNoBtn" class="ghost" style="display:none" onclick="raise(false)">Против</button>
       </div>
@@ -639,6 +640,11 @@ async function airShot() {
   if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
   myActions.mafia_kill = "air"; sfx("tick"); render();
 }
+async function skipDonCheck() {
+  const { data } = await sb.rpc("act", { p_game: game.id, p_kind: "don_check", p_target: null });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  myActions.don_check = "skip"; sfx("tick"); render();
+}
 async function raise(yes) {
   const { data } = await sb.rpc("act", { p_game: game.id, p_kind: yes ? "raise_yes" : "raise_no" });
   if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
@@ -785,6 +791,9 @@ function render() {
     && preset && preset.allow_mafia_skip_shot;
   $("airShotBtn").style.display = canAir ? "block" : "none";
   $("airShotBtn").textContent = myActions.mafia_kill === "air" ? "💨 Выстрел в воздух ✓" : "💨 Выстрел в воздух";
+  const donChecking = inGame && game.phase === "night" && my && my.alive && myRole && myRole.role === "don" && donMode === "check";
+  $("skipCheckBtn").style.display = donChecking ? "block" : "none";
+  $("skipCheckBtn").textContent = myActions.don_check === "skip" ? "🚫 Проверка пропущена ✓" : "🚫 Пропустить проверку";
   const inRaise = inGame && game.phase === "allraise" && my && my.alive;
   $("raiseYesBtn").style.display = inRaise ? "block" : "none";
   $("raiseNoBtn").style.display = inRaise ? "block" : "none";
@@ -948,6 +957,7 @@ async function runBots() {
     const act = (kind, target) => b.c.rpc("act", { p_game: game.id, p_kind: kind, p_target: target || null });
     const others = seatsG.filter(s => s.alive && s.uid !== b.uid);
     try {
+      if (b.role === "don" && game.phase === "night") await act("don_check");  // дон закрывает проверку
       if (game.phase === "reveal" || game.phase === "zeronight") await act("ready");
       else if (game.phase === "allraise") await act(Math.random() < 0.5 ? "raise_yes" : "raise_no");
       else if (game.phase === "day") {
