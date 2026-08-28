@@ -179,6 +179,17 @@
   </div>
 </div>
 
+<div class="overlay" id="nickOverlay">
+  <div class="card">
+    <div class="role-big">🎭</div>
+    <div class="role-name">Как тебя звать?</div>
+    <div class="role-desc">Этот никнейм увидят другие игроки</div>
+    <input id="nickInput" maxlength="24" placeholder="Никнейм" autocomplete="nickname">
+    <div class="err" id="nickErr"></div>
+    <button onclick="saveNick()">Сохранить</button>
+  </div>
+</div>
+
 <div class="overlay" id="endOverlay">
   <div class="card">
     <div class="role-big" id="endEmoji"></div>
@@ -345,32 +356,42 @@ async function signOut() {
 async function afterLogin() {
   const { data } = await sb.auth.getSession();
   if (!data.session) return false;
+  // старые анонимные сессии (боты, прошлые версии) больше не годятся — нужен аккаунт
+  if (data.session.user.is_anonymous) { await sb.auth.signOut(); me = null; return false; }
   me = data.session.user;
   const { data: prof } = await sb.rpc("my_profile");
   myNick = (prof && prof.nickname) || "";
-  if (!myNick) {
-    const n = prompt("Придумай никнейм для игры:", "");
-    if (n && n.trim().length >= 2) {
-      const { data: r } = await sb.rpc("set_nickname", { p_nick: n.trim() });
-      myNick = (r && r.nickname) || n.trim();
-    } else { myNick = "Игрок"; await sb.rpc("set_nickname", { p_nick: myNick }); }
-  }
-  $("nickname").value = myNick;
-  $("meNick").textContent = myNick;
   $("authView").style.display = "none";
-  $("homeView").style.display = "block";
-  const invite = new URLSearchParams(location.search).get("r");
-  if (invite && !room) { $("joinCode").value = invite.toUpperCase(); join(invite); }
+  if (!myNick) { askNick(); return true; }
+  showHome();
   return true;
 }
 
-async function changeNick() {
-  const n = prompt("Новый никнейм:", myNick);
-  if (!n || n.trim().length < 2) return;
-  const { data } = await sb.rpc("set_nickname", { p_nick: n.trim() });
-  if (data && data.error) { alert("Не вышло: " + data.error); return; }
-  myNick = data.nickname; $("meNick").textContent = myNick; $("nickname").value = myNick;
+function showHome() {
+  $("nickname").value = myNick;
+  $("meNick").textContent = myNick;
+  $("authView").style.display = "none";
+  $("nickOverlay").style.display = "none";
+  $("homeView").style.display = "block";
+  const invite = new URLSearchParams(location.search).get("r");
+  if (invite && !room) { $("joinCode").value = invite.toUpperCase(); join(invite); }
 }
+
+function askNick() {
+  $("nickInput").value = myNick || "";
+  $("nickErr").textContent = "";
+  $("nickOverlay").style.display = "flex";
+  setTimeout(() => $("nickInput").focus(), 50);
+}
+async function saveNick() {
+  const n = $("nickInput").value.trim();
+  if (n.length < 2) { $("nickErr").textContent = "Минимум 2 символа"; return; }
+  const { data, error } = await sb.rpc("set_nickname", { p_nick: n });
+  if (error || (data && data.error)) { $("nickErr").textContent = error?.message || data.error; return; }
+  myNick = data.nickname;
+  showHome();
+}
+function changeNick() { askNick(); }
 
 async function ensureAuth() {
   const { data } = await sb.auth.getSession();
@@ -437,7 +458,7 @@ async function loadPreset() {
 }
 async function savePreset() {
   const { data, error } = await sb.rpc("update_room_preset", { p_room: room.room_id, p_preset: preset });
-  if (error || (data && data.error)) { alert("Настройки не сохранились: " + (error?.message || data.error)); return; }
+  if (error || (data && data.error)) { $("compPreview").textContent = "⚠ Настройки не сохранились: " + (error?.message || data.error); return; }
   if (data && data.preset) preset = data.preset;
   renderSettings();
 }
@@ -521,7 +542,7 @@ function subscribe() {
     .on("postgres_changes",{event:"*",schema:"public",table:"online_games",filter:"room_id=eq."+room.room_id}, p => { if (p.new?.id) onGame(p.new); })
     .on("postgres_changes",{event:"UPDATE",schema:"public",table:"rooms",filter:"id=eq."+room.room_id}, p => {
       if (p.new.preset) { preset = p.new.preset; renderSettings(); }
-      if (p.new.status === "finished" && !game) { alert("Комната закрыта"); leave(true); }
+      if (p.new.status === "finished" && !game) { leave(true); }
     })
     .subscribe();
 }
@@ -602,7 +623,7 @@ function closeRole() {
 
 async function startGame() {
   const { data, error } = await sb.rpc("start_game", { p_room: room.room_id });
-  if (error || data.error) alert("Не удалось начать: " + (error?.message || data.error));
+  if (error || data.error) $("phaseSub").textContent = "⚠ " + ruErr(error?.message || data.error);
 }
 async function sendReady() {
   myActions.ready = true; render();
@@ -902,7 +923,7 @@ async function addBot() {
     bots.push({ c, uid: data.user.id, name, role: null });
     await refreshPlayers();
     if (!botTimer) botTimer = setInterval(runBots, 2500);
-  } catch (e) { alert("Бот не добавился: " + (e.message || e)); }
+  } catch (e) { $("compPreview").textContent = "⚠ Бот не добавился: " + (e.message || e); }
   btn.disabled = false;
 }
 
