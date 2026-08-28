@@ -136,11 +136,37 @@
   .preset-btn { background:rgba(255,255,255,.04); color:var(--muted); border:1px solid var(--line-soft);
     border-radius:99px; padding:7px 15px; font:600 13px var(--sans); cursor:pointer; width:auto; box-shadow:none; }
   .preset-btn.on { background:linear-gradient(180deg,var(--gold),var(--gold-deep)); color:#1a1206; border-color:var(--gold-deep); }
-  .set-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:10px 18px; margin-top:10px; }
-  .set-grid label { font-size:13px; color:var(--muted); display:flex; align-items:center; justify-content:space-between; gap:8px; }
-  .set-grid input[type=number] { width:82px; margin:0; padding:6px 8px; font:14px var(--mono); text-align:center; }
-  .set-grid input[type=checkbox] { width:auto; margin:0; accent-color:var(--gold-deep); }
-  .set-grid select { margin:0; padding:6px 8px; font-size:13px; width:auto; flex:1; }
+  /* настройки: группы, где подпись и её переключатель всегда в одной карточке */
+  .set-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; margin-top:14px; align-items:start; }
+  .set-group h5 { font:600 10.5px var(--sans); text-transform:uppercase; letter-spacing:.22em;
+    color:var(--gold-dim); margin-bottom:8px; }
+  .set-rows { display:flex; flex-direction:column; gap:6px; }
+  .set-row {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:rgba(4,7,14,.5); border:1px solid var(--line-soft); border-left:2px solid transparent;
+    border-radius:10px; padding:9px 12px; font-size:13.5px; color:var(--text); cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .set-row:hover { border-color:rgba(245,212,134,.28); }
+  .set-label { display:flex; flex-direction:column; gap:2px; line-height:1.25; }
+  .set-label i { font-style:normal; font-size:11px; color:var(--dim); }
+  .set-ctl { display:flex; align-items:center; gap:7px; flex-shrink:0; }
+  .set-ctl i { font-style:normal; font-size:10.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.1em; }
+  .set-row input[type=number] { width:64px; margin:0; padding:6px 8px; font:600 14px var(--mono);
+    text-align:center; background:rgba(0,0,0,.45); }
+  .set-row select { margin:0; padding:7px 10px; font-size:13px; width:100%; background:rgba(0,0,0,.45); }
+  .set-row.wide { flex-direction:column; align-items:stretch; gap:8px; cursor:default; }
+  .set-row.wide .set-ctl { width:100%; }
+  /* переключатель вместо галочки — состояние видно по самой строке */
+  .set-row.toggle input[type=checkbox] { position:absolute; opacity:0; width:0; height:0; }
+  .switch { position:relative; width:38px; height:22px; border-radius:99px; flex-shrink:0;
+    background:rgba(255,255,255,.09); border:1px solid var(--line-soft); transition:background .18s, border-color .18s; }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+    background:var(--muted); transition:transform .18s, background .18s; }
+  .set-row.toggle.on { border-left-color:var(--gold); background:rgba(245,212,134,.07); }
+  .set-row.toggle.on .switch { background:linear-gradient(180deg,var(--gold),var(--gold-deep)); border-color:var(--gold-deep); }
+  .set-row.toggle.on .switch::after { transform:translateX(16px); background:#1a1206; }
+  .set-row.toggle:focus-within { outline:2px solid var(--gold-dim); outline-offset:2px; }
   .comp-preview { margin-top:12px; padding:10px 12px; background:rgba(4,7,14,.6);
     border:1px solid var(--line-soft); border-radius:10px; font-size:13px; color:var(--text); }
   .settings-ro { font-size:13px; color:var(--muted); padding:8px 0; }
@@ -701,33 +727,48 @@ function renderSettings() {
     `<button class="preset-btn ${preset.kind === k ? "on" : ""}" onclick="applyPreset('${k}')">${p.name}</button>`).join("")
     + `<button class="preset-btn ${!PRESETS[preset.kind] ? "on" : ""}" disabled>Своя</button>`;
 
-  const num = (label, path, min, max) =>
-    `<label>${label}<input type="number" min="${min}" max="${max}" value="${preset[path]}"
-      onchange="setField('${path}', Math.max(${min}, Math.min(${max}, +this.value)))"></label>`;
-  const chk = (label, path, val) =>
-    `<label>${label}<input type="checkbox" ${val ? "checked" : ""} onchange="setField('${path}', this.checked)"></label>`;
+  const num = (label, path, min, max, unit) =>
+    `<label class="set-row"><span class="set-label">${label}</span>
+      <span class="set-ctl"><input type="number" min="${min}" max="${max}" value="${preset[path]}"
+        onchange="setField('${path}', Math.max(${min}, Math.min(${max}, +this.value)))"><i>${unit || ""}</i></span></label>`;
+  const chk = (label, path, val, hint) =>
+    `<label class="set-row toggle${val ? " on" : ""}">
+      <span class="set-label">${label}${hint ? `<i>${hint}</i>` : ""}</span>
+      <input type="checkbox" ${val ? "checked" : ""} onchange="setField('${path}', this.checked)">
+      <span class="switch" aria-hidden="true"></span></label>`;
+  const group = (title, rows) =>
+    `<section class="set-group"><h5>${title}</h5><div class="set-rows">${rows.join("")}</div></section>`;
 
   $("setGrid").innerHTML = [
-    chk("Дон", "roles.don", preset.roles.don),
-    chk("Шериф", "roles.sheriff", preset.roles.sheriff),
-    chk("Доктор (от 8 игроков)", "roles.doctor", preset.roles.doctor),
-    chk("Маньяк (от 6)", "roles.maniac", preset.roles.maniac),
-    chk("Любовница (от 6)", "roles.lover", preset.roles.lover),
-    num("День, сек на игрока", "day_seconds_per_player", 15, 180),
-    num("Ночь, сек на роль", "night_step_seconds", 10, 120),
-    num("Последнее слово, сек", "last_word_seconds", 10, 180),
-    num("Нулевая ночь, сек", "zero_night_seconds", 10, 180),
-    num("Фолов до удаления", "max_fouls", 2, 10),
-    num("Балаган, сек (0 — выключен)", "free_discussion_seconds", 0, 300),
-    chk("Можно выставлять себя", "can_nominate_self", preset.can_nominate_self),
-    chk("Мафия может стрелять в воздух", "allow_mafia_skip_shot", preset.allow_mafia_skip_shot),
-    chk("Пропускать нулевую ночь", "skip_zero_night", preset.skip_zero_night),
-    chk("Речь по кругу (говорит один)", "speech_order", preset.speech_order),
-    chk("Показывать роль выбывшего", "reveal_on_death", preset.reveal_on_death),
-    chk("Последнее слово убитым ночью", "last_word_for_night_victims", preset.last_word_for_night_victims !== false),
-    `<label>При ничьей<select onchange="setField('tie', this.value)">` +
-      Object.entries(TIE_RU).map(([k, v]) => `<option value="${k}" ${preset.tie === k ? "selected" : ""}>${v}</option>`).join("") +
-      `</select></label>`
+    group("Роли в игре", [
+      chk("Дон", "roles.don", preset.roles.don, "стреляет и ищет шерифа"),
+      chk("Шериф", "roles.sheriff", preset.roles.sheriff, "проверяет по одному за ночь"),
+      chk("Доктор", "roles.doctor", preset.roles.doctor, "от 8 игроков"),
+      chk("Маньяк", "roles.maniac", preset.roles.maniac, "от 6 игроков"),
+      chk("Любовница", "roles.lover", preset.roles.lover, "от 6 игроков"),
+    ]),
+    group("Тайминги", [
+      num("День", "day_seconds_per_player", 15, 180, "сек на игрока"),
+      num("Ночь", "night_step_seconds", 10, 120, "сек на роль"),
+      num("Последнее слово", "last_word_seconds", 10, 180, "сек"),
+      num("Нулевая ночь", "zero_night_seconds", 10, 180, "сек"),
+      num("Балаган", "free_discussion_seconds", 0, 300, "сек · 0 — выкл"),
+      num("Фолы до удаления", "max_fouls", 2, 10, "фола"),
+    ]),
+    group("Правила дня", [
+      chk("Речь по кругу", "speech_order", preset.speech_order, "говорит по одному, остальные молчат"),
+      chk("Можно выставлять себя", "can_nominate_self", preset.can_nominate_self),
+      `<label class="set-row wide"><span class="set-label">При равенстве голосов</span>
+        <span class="set-ctl"><select onchange="setField('tie', this.value)">` +
+        Object.entries(TIE_RU).map(([k, v]) => `<option value="${k}" ${preset.tie === k ? "selected" : ""}>${v}</option>`).join("") +
+        `</select></span></label>`,
+    ]),
+    group("Ночь и выбывание", [
+      chk("Пропускать нулевую ночь", "skip_zero_night", preset.skip_zero_night, "мафия не знакомится"),
+      chk("Мафия может стрелять в воздух", "allow_mafia_skip_shot", preset.allow_mafia_skip_shot),
+      chk("Последнее слово убитым ночью", "last_word_for_night_victims", preset.last_word_for_night_victims !== false),
+      chk("Показывать роль выбывшего", "reveal_on_death", preset.reveal_on_death, "иначе роли остаются тайной"),
+    ]),
   ].join("");
   updateCompPreview();
 }
