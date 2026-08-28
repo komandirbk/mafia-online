@@ -30,7 +30,22 @@
   .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--divider); }
   #roomView { display:none; }
   .room-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
-  .code-pill { font-family:Georgia,serif; font-size:24px; letter-spacing:.35em; color:var(--gold); background:var(--surface); border:1px dashed var(--gold); border-radius:12px; padding:6px 14px 6px 20px; }
+  .code-pill { font-family:Georgia,serif; font-size:24px; letter-spacing:.35em; color:var(--gold); background:var(--surface); border:1px dashed var(--gold); border-radius:12px; padding:6px 14px 6px 20px; cursor:pointer; user-select:none; }
+  .code-pill.hidden-code { letter-spacing:.15em; font-size:15px; color:var(--muted); border-color:var(--divider); font-family:inherit; padding:10px 14px; }
+  .settings { margin-bottom:14px; }
+  .settings summary { cursor:pointer; color:var(--gold); font-weight:700; padding:6px 0; list-style:none; }
+  .settings summary::-webkit-details-marker { display:none; }
+  .preset-row { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
+  .preset-btn { background:var(--elevated); color:var(--muted); border:1px solid var(--divider); border-radius:99px; padding:7px 14px; font-size:13px; font-weight:600; cursor:pointer; width:auto; }
+  .preset-btn.on { background:var(--gold); color:#1d1a17; border-color:var(--gold); }
+  .set-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px 16px; margin-top:8px; }
+  .set-grid label { font-size:13px; color:var(--muted); display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .set-grid input[type=number] { width:80px; margin:0; padding:6px 8px; font-size:14px; }
+  .set-grid input[type=checkbox] { width:auto; margin:0; accent-color:var(--gold); }
+  .set-grid select { margin:0; padding:6px 8px; font-size:13px; width:auto; flex:1; }
+  .comp-preview { margin-top:10px; padding:10px 12px; background:var(--elevated); border-radius:10px; font-size:13px; color:var(--text); }
+  .settings-ro { font-size:13px; color:var(--muted); padding:8px 0; }
+  .icon-btn { width:auto; background:var(--elevated); color:var(--muted); border:1px solid var(--divider); padding:8px 12px; }
   .mode-tag { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); background:var(--elevated); border-radius:99px; padding:4px 10px; }
   .players { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
   .tile { position:relative; background:var(--elevated); border:2px solid var(--divider); border-radius:14px; aspect-ratio:4/3; overflow:hidden; display:flex; align-items:center; justify-content:center; }
@@ -92,13 +107,24 @@
   <div id="roomView">
     <div class="card">
       <div class="room-head">
-        <div class="code-pill" id="roomCode">······</div>
+        <div class="code-pill hidden-code" id="roomCode" onclick="toggleCode()" title="Показать / скрыть код">👁 показать код</div>
         <span class="mode-tag" id="roomMode"></span>
         <div class="row" style="flex:1; justify-content:flex-end; min-width:200px;">
+          <button class="icon-btn" onclick="toggleSound()" id="soundBtn" title="Звуки">🔊</button>
           <button class="ghost" style="width:auto" onclick="copyLink()" id="copyBtn">Пригласить</button>
           <button class="danger" style="width:auto" onclick="leave()">Выйти</button>
         </div>
       </div>
+
+      <details class="settings card" id="settingsBox" style="display:none">
+        <summary>⚙️ Настройки игры <span id="presetName"></span></summary>
+        <div id="settingsHost">
+          <div class="preset-row" id="presetRow"></div>
+          <div class="set-grid" id="setGrid"></div>
+          <div class="comp-preview" id="compPreview"></div>
+        </div>
+        <div class="settings-ro" id="settingsRO" style="display:none"></div>
+      </details>
       <div id="gamePanel">
         <div class="phase-title" id="phaseTitle"></div>
         <div class="phase-sub" id="phaseSub"></div>
@@ -112,6 +138,9 @@
         <button id="readyBtn" style="display:none" onclick="sendReady()">Готов</button>
         <button id="hostNextBtn" style="display:none" onclick="hostNext()">Следующая фаза →</button>
         <button id="donModeBtn" class="ghost" style="display:none" onclick="toggleDonMode()"></button>
+        <button id="airShotBtn" class="ghost" style="display:none" onclick="airShot()">💨 Выстрел в воздух</button>
+        <button id="raiseYesBtn" style="display:none" onclick="raise(true)">✋ Поднять руку — за</button>
+        <button id="raiseNoBtn" class="ghost" style="display:none" onclick="raise(false)">Против</button>
       </div>
     </div>
   </div>
@@ -152,16 +181,84 @@ const ROLE_RU = {
   lover:["Любовница","💋","Ночью блокируй действия одного игрока."]
 };
 const PHASE_TITLE = {
-  reveal:"Раздача ролей", day:"День — обсуждение", voting:"Голосование",
-  lastword:"Последнее слово", night:"Ночь", morning:"Утро", finished:"Игра окончена"
+  reveal:"Раздача ролей", zeronight:"Нулевая ночь", day:"День — обсуждение", voting:"Голосование",
+  allraise:"Подъём всех", lastword:"Последнее слово", night:"Ночь", morning:"Утро", finished:"Игра окончена"
 };
+
+// Пресеты — 1в1 как встроенные в iOS-приложении
+const PRESETS = {
+  sport: { name:"Спортивная (ФИИМ)", kind:"sport", day_seconds_per_player:60, last_word_seconds:60,
+    zero_night_seconds:60, night_step_seconds:25, tie:"revoteThenJointDeath", can_nominate_self:false,
+    allow_mafia_skip_shot:false, skip_zero_night:false,
+    roles:{don:true, sheriff:true, doctor:false, maniac:false, lover:false} },
+  yard: { name:"Дворовая", kind:"yard", day_seconds_per_player:45, last_word_seconds:30,
+    zero_night_seconds:30, night_step_seconds:30, tie:"revoteThenNobody", can_nominate_self:true,
+    allow_mafia_skip_shot:true, skip_zero_night:false,
+    roles:{don:true, sheriff:true, doctor:true, maniac:false, lover:false} },
+  extended: { name:"Расширенная", kind:"extended", day_seconds_per_player:60, last_word_seconds:60,
+    zero_night_seconds:60, night_step_seconds:30, tie:"revoteThenAllRaise", can_nominate_self:false,
+    allow_mafia_skip_shot:true, skip_zero_night:false,
+    roles:{don:true, sheriff:true, doctor:true, maniac:true, lover:false} }
+};
+const TIE_RU = { revoteThenNobody:"переголосовка, затем никто не выбывает",
+  revoteThenJointDeath:"переголосовка, затем оба выбывают",
+  revoteThenAllRaise:"переголосовка, затем подъём всех" };
+const ROLE_SHORT = { don:"дон", mafia:"мафия", sheriff:"шериф", doctor:"доктор",
+  maniac:"маньяк", lover:"любовница", civilian:"мирный" };
 
 let me=null, room=null, players=[], channel=null;
 let lk={room:null,connected:false};
 let game=null, myRole=null, seatsG=[], mafiaMarks={}, donMode="kill", roleShown=false;
 let tickTimer=null, clockTimer=null, myActions={}, hostRoles={};
+let codeShown=false, preset=null, soundOn=localStorage.getItem("sound") !== "off", lastDeaths=0;
 
 const $=id=>document.getElementById(id);
+
+// --- Звуки: синтезируем через Web Audio, файлы не нужны ---
+let actx = null;
+function tone(freq, start, dur, type = "sine", vol = 0.07) {
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, actx.currentTime + start);
+  g.gain.linearRampToValueAtTime(vol, actx.currentTime + start + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + start + dur);
+  o.connect(g); g.connect(actx.destination);
+  o.start(actx.currentTime + start); o.stop(actx.currentTime + start + dur + 0.05);
+}
+function sfx(name) {
+  if (!soundOn) return;
+  try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch(e) { return; }
+  const S = {
+    night:   () => { tone(300,0,.5,"sine",.08); tone(200,.18,.6,"sine",.07); tone(140,.4,.9,"sine",.06); },
+    day:     () => { tone(392,0,.28); tone(523,.12,.28); tone(659,.24,.45,"sine",.08); },
+    zeronight:() => { tone(220,0,.5,"triangle",.06); tone(165,.25,.7,"triangle",.06); },
+    voting:  () => { tone(660,0,.12,"square",.05); tone(880,.14,.18,"square",.05); },
+    allraise:() => { tone(523,0,.15,"square",.05); tone(523,.18,.15,"square",.05); tone(700,.36,.3,"square",.06); },
+    death:   () => { tone(180,0,.5,"sawtooth",.07); tone(90,.12,.8,"sine",.08); },
+    morning: () => { tone(523,0,.2); tone(587,.12,.2); tone(784,.26,.5,"sine",.08); },
+    check:   () => { tone(880,0,.12,"sine",.06); tone(1175,.13,.25,"sine",.06); },
+    winRed:  () => { [523,659,784,1047].forEach((f,i)=>tone(f,i*.14,.5,"sine",.09)); },
+    winBlack:() => { [392,349,294,196].forEach((f,i)=>tone(f,i*.16,.6,"sawtooth",.07)); },
+    winManiac:()=> { [440,466,554,740].forEach((f,i)=>tone(f,i*.13,.5,"square",.06)); },
+    lastword:() => { tone(330,0,.3,"triangle",.06); tone(247,.2,.5,"triangle",.06); },
+    tick:    () => { tone(1000,0,.06,"square",.04); }
+  };
+  (S[name] || (()=>{}))();
+}
+function toggleSound() {
+  soundOn = !soundOn;
+  localStorage.setItem("sound", soundOn ? "on" : "off");
+  $("soundBtn").textContent = soundOn ? "🔊" : "🔇";
+  if (soundOn) sfx("check");
+}
+
+function toggleCode() {
+  codeShown = !codeShown;
+  const el = $("roomCode");
+  el.className = "code-pill" + (codeShown ? "" : " hidden-code");
+  el.textContent = codeShown ? room.code : "👁 показать код";
+}
 $("nickname").value = localStorage.getItem("nick") || "";
 
 async function ensureAuth() {
@@ -203,8 +300,12 @@ async function enterRoom(r) {
   history.replaceState(null, "", "?r=" + r.code);
   $("homeView").style.display = "none";
   $("roomView").style.display = "block";
-  $("roomCode").textContent = r.code;
+  codeShown = false;
+  $("roomCode").className = "code-pill hidden-code";
+  $("roomCode").textContent = "👁 показать код";
+  $("soundBtn").textContent = soundOn ? "🔊" : "🔇";
   $("roomMode").textContent = r.mode === "host" ? "живой ведущий" : "автоведущий";
+  await loadPreset();
   await refreshPlayers();
   subscribe();
   connectVideo();
@@ -217,6 +318,93 @@ async function refreshPlayers() {
   const { data } = await sb.from("room_players").select("*").eq("room_id", room.room_id).order("joined_at");
   players = data || [];
   render();
+  renderSettings();
+}
+
+// --- Настройки лобби ---
+async function loadPreset() {
+  const { data } = await sb.from("rooms").select("preset").eq("id", room.room_id).limit(1);
+  preset = (data && data[0] && data[0].preset && Object.keys(data[0].preset).length) ? data[0].preset
+         : JSON.parse(JSON.stringify(PRESETS.yard));
+  renderSettings();
+}
+async function savePreset() {
+  const { data, error } = await sb.rpc("update_room_preset", { p_room: room.room_id, p_preset: preset });
+  if (error || (data && data.error)) { alert("Настройки не сохранились: " + (error?.message || data.error)); return; }
+  if (data && data.preset) preset = data.preset;
+  renderSettings();
+}
+function applyPreset(key) { preset = JSON.parse(JSON.stringify(PRESETS[key])); savePreset(); sfx("check"); }
+function setField(path, value) {
+  if (path.startsWith("roles.")) preset.roles[path.slice(6)] = value;
+  else preset[path] = value;
+  preset.kind = "custom"; preset.name = preset.name && preset.name !== "Своя" ? preset.name : "Своя";
+  const match = Object.entries(PRESETS).find(([k, p]) => JSON.stringify({...p, name:0, kind:0}) === JSON.stringify({...preset, name:0, kind:0}));
+  if (match) { preset.kind = match[0]; preset.name = match[1].name; }
+  savePreset();
+}
+
+function renderSettings() {
+  if (!room || !preset) return;
+  const box = $("settingsBox");
+  const inLobby = !game || game.winner;
+  box.style.display = inLobby ? "block" : "none";
+  $("presetName").textContent = "— " + (preset.name || "Своя");
+  const host = !!amHost();
+  $("settingsHost").style.display = host ? "block" : "none";
+  $("settingsRO").style.display = host ? "none" : "block";
+
+  if (!host) {
+    $("settingsRO").innerHTML = settingsSummary();
+    return;
+  }
+  $("presetRow").innerHTML = Object.entries(PRESETS).map(([k, p]) =>
+    `<button class="preset-btn ${preset.kind === k ? "on" : ""}" onclick="applyPreset('${k}')">${p.name}</button>`).join("")
+    + `<button class="preset-btn ${!PRESETS[preset.kind] ? "on" : ""}" disabled>Своя</button>`;
+
+  const num = (label, path, min, max) =>
+    `<label>${label}<input type="number" min="${min}" max="${max}" value="${preset[path]}"
+      onchange="setField('${path}', Math.max(${min}, Math.min(${max}, +this.value)))"></label>`;
+  const chk = (label, path, val) =>
+    `<label>${label}<input type="checkbox" ${val ? "checked" : ""} onchange="setField('${path}', this.checked)"></label>`;
+
+  $("setGrid").innerHTML = [
+    chk("Дон", "roles.don", preset.roles.don),
+    chk("Шериф", "roles.sheriff", preset.roles.sheriff),
+    chk("Доктор (от 8 игроков)", "roles.doctor", preset.roles.doctor),
+    chk("Маньяк (от 6)", "roles.maniac", preset.roles.maniac),
+    chk("Любовница (от 6)", "roles.lover", preset.roles.lover),
+    num("День, сек на игрока", "day_seconds_per_player", 15, 180),
+    num("Ночь, сек на роль", "night_step_seconds", 10, 120),
+    num("Последнее слово, сек", "last_word_seconds", 10, 180),
+    num("Нулевая ночь, сек", "zero_night_seconds", 10, 180),
+    chk("Можно выставлять себя", "can_nominate_self", preset.can_nominate_self),
+    chk("Мафия может стрелять в воздух", "allow_mafia_skip_shot", preset.allow_mafia_skip_shot),
+    chk("Пропускать нулевую ночь", "skip_zero_night", preset.skip_zero_night),
+    `<label>При ничьей<select onchange="setField('tie', this.value)">` +
+      Object.entries(TIE_RU).map(([k, v]) => `<option value="${k}" ${preset.tie === k ? "selected" : ""}>${v}</option>`).join("") +
+      `</select></label>`
+  ].join("");
+  updateCompPreview();
+}
+
+function settingsSummary() {
+  const on = Object.entries(preset.roles).filter(([, v]) => v).map(([k]) => ROLE_SHORT[k]).join(", ");
+  return `<b>${preset.name}</b><br>роли: ${on || "только мафия"}<br>` +
+    `день ${preset.day_seconds_per_player}с/игрока · ночь ${preset.night_step_seconds}с/роль · последнее слово ${preset.last_word_seconds}с<br>` +
+    `ничья: ${TIE_RU[preset.tie]}${preset.can_nominate_self ? " · можно выставлять себя" : ""}` +
+    `${preset.allow_mafia_skip_shot ? " · выстрел в воздух" : ""}${preset.skip_zero_night ? " · без нулевой ночи" : ""}`;
+}
+
+async function updateCompPreview() {
+  const n = room.mode === "host" ? players.filter(p => !p.is_host).length : players.length;
+  if (n < 4) { $("compPreview").textContent = `Нужно минимум 4 игрока (сейчас ${n})`; return; }
+  const { data } = await sb.rpc("compose_roles", { n, p: preset });
+  if (!data) return;
+  const counts = {};
+  data.forEach(r => counts[r] = (counts[r] || 0) + 1);
+  $("compPreview").innerHTML = `<b>Состав на ${n} игроков:</b> ` +
+    Object.entries(counts).map(([r, c]) => `${ROLE_SHORT[r]}${c > 1 ? " ×" + c : ""}`).join(", ");
 }
 
 function subscribe() {
@@ -225,6 +413,7 @@ function subscribe() {
     .on("postgres_changes",{event:"*",schema:"public",table:"room_players",filter:"room_id=eq."+room.room_id}, refreshPlayers)
     .on("postgres_changes",{event:"*",schema:"public",table:"online_games",filter:"room_id=eq."+room.room_id}, p => { if (p.new?.id) onGame(p.new); })
     .on("postgres_changes",{event:"UPDATE",schema:"public",table:"rooms",filter:"id=eq."+room.room_id}, p => {
+      if (p.new.preset) { preset = p.new.preset; renderSettings(); }
       if (p.new.status === "finished" && !game) { alert("Комната закрыта"); leave(true); }
     })
     .subscribe();
@@ -240,13 +429,18 @@ async function onGame(g) {
   const isNew = !game || game.id !== g.id;
   const phaseChanged = !game || game.phase !== g.phase;
   game = g;
-  if (isNew) { roleShown = false; myActions = {}; mafiaMarks = {}; botDone = {};
+  if (isNew) { roleShown = false; myActions = {}; mafiaMarks = {}; botDone = {}; lastDeaths = 0;
     bots.forEach(b => b.role = null);
+    if (g.preset) preset = g.preset;
     await fetchSeats(); await fetchRole();
   }
   if (phaseChanged) { myActions = {}; mafiaMarks = {}; applyAV(); await fetchSeats();
     if (g.phase === "morning") fetchNightResult();
+    sfx(g.phase === "finished" ? ({red:"winRed", black:"winBlack", maniac:"winManiac"}[g.winner] || "winRed") : g.phase);
   }
+  const deaths = (g.state.deaths || []).length;
+  if (deaths > lastDeaths) { if (!phaseChanged || g.phase === "morning" || g.phase === "lastword") sfx("death"); }
+  lastDeaths = deaths;
   render();
 }
 
@@ -308,6 +502,16 @@ async function sendReady() {
   await sb.rpc("act", { p_game: game.id, p_kind: "ready" });
 }
 async function hostNext() { await sb.rpc("host_next", { p_game: game.id }); }
+async function airShot() {
+  const { data } = await sb.rpc("act", { p_game: game.id, p_kind: "mafia_kill", p_target: null });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  myActions.mafia_kill = "air"; sfx("tick"); render();
+}
+async function raise(yes) {
+  const { data } = await sb.rpc("act", { p_game: game.id, p_kind: yes ? "raise_yes" : "raise_no" });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  myActions.raise = yes ? "yes" : "no"; sfx("tick"); render();
+}
 function toggleDonMode() {
   donMode = donMode === "kill" ? "check" : "kill"; render();
 }
@@ -353,9 +557,10 @@ async function tileClick(uid) {
   if (kind === "mafia_kill") fetchMafiaMarks();
 }
 function ruErr(e) {
-  return { self:"Себя выставить нельзя", same_heal:"Нельзя лечить одного дважды подряд",
+  return { self:"Себя выставить нельзя (настройка выключена)", same_heal:"Нельзя лечить одного дважды подряд",
     not_candidate:"Голосовать можно только за кандидата", bad_target:"Цель недоступна",
-    wrong_phase:"Не та фаза", forbidden:"Недоступно твоей роли", dead:"Ты выбыл" }[e] || e;
+    wrong_phase:"Не та фаза", forbidden:"Недоступно твоей роли", dead:"Ты выбыл",
+    skip_not_allowed:"Выстрел в воздух запрещён настройками", self_heal_used:"Себя можно лечить только раз за игру" }[e] || e;
 }
 
 function applyAV() {
@@ -390,6 +595,12 @@ function phaseHint() {
   const r = myRole ? myRole.role : "civilian";
   switch (game.phase) {
     case "reveal": return "Посмотри свою роль и нажми «Готов»";
+    case "zeronight":
+      return ["mafia","don"].includes(r)
+        ? "Нулевая ночь: мафия знакомится 🤝 — твоя команда подсвечена"
+        : "Нулевая ночь — мафия знакомится. Закрой глаза 😴";
+    case "allraise":
+      return "Подъём всех: голосуем, уезжают ли оба кандидата. Больше половины «за» — уезжают";
     case "day": return "Обсуждайте! Клик по игроку — выставить на голосование";
     case "voting": return "Тайное голосование: клик по кандидату с оранжевой рамкой";
     case "lastword": {
@@ -428,7 +639,7 @@ function render() {
   } else $("gamePanel").style.display = "none";
 
   const my = mySeat();
-  const readyPhases = ["day","morning"];
+  const readyPhases = ["day","morning","zeronight"];
   const showReady = !amNarrator() && (inGame && my && my.alive && readyPhases.includes(game.phase) && !myActions.ready
     || inGame && game.phase === "lastword" && game.state.lastword === me.id);
   $("readyBtn").style.display = showReady ? "block" : "none";
@@ -437,6 +648,16 @@ function render() {
   $("hostNextBtn").style.display = inGame && room.mode === "host" && amHost() ? "block" : "none";
   $("donModeBtn").style.display = inGame && game.phase === "night" && myRole && myRole.role === "don" ? "block" : "none";
   $("donModeBtn").textContent = donMode === "kill" ? "🔫 Выстрел (сменить на проверку)" : "🔍 Проверка (сменить на выстрел)";
+  const canAir = inGame && game.phase === "night" && my && my.alive && myRole
+    && ["mafia","don"].includes(myRole.role) && (myRole.role === "mafia" || donMode === "kill")
+    && preset && preset.allow_mafia_skip_shot;
+  $("airShotBtn").style.display = canAir ? "block" : "none";
+  $("airShotBtn").textContent = myActions.mafia_kill === "air" ? "💨 Выстрел в воздух ✓" : "💨 Выстрел в воздух";
+  const inRaise = inGame && game.phase === "allraise" && my && my.alive;
+  $("raiseYesBtn").style.display = inRaise ? "block" : "none";
+  $("raiseNoBtn").style.display = inRaise ? "block" : "none";
+  $("raiseYesBtn").textContent = myActions.raise === "yes" ? "✋ За ✓" : "✋ Поднять руку — за";
+  $("raiseNoBtn").textContent = myActions.raise === "no" ? "Против ✓" : "Против";
 
   let list = inGame || (game && game.winner) ? seatsG : players.map(p => ({uid:p.uid, nickname:p.nickname, alive:true, seat:null, is_host:p.is_host}));
   if (game && room.mode === "host") {
@@ -450,6 +671,10 @@ function render() {
     const host = players.find(x => x.uid === p.uid && x.is_host);
     const badges = [];
     if (p.narrator) badges.push('<span class="badge nom">ведущий 🎙</span>');
+    if (game && game.phase === "zeronight" && myRole && myRole.team &&
+        myRole.team.some(t => t.nickname === p.nickname && t.seat === p.seat)) {
+      badges.push('<span class="badge mafi">🤝 своя</span>');
+    }
     if (amNarrator() && hostRoles[p.uid]) {
       const rr = ROLE_RU[hostRoles[p.uid]] || ["?","❓"];
       badges.push(`<span class="badge ${["mafia","don"].includes(hostRoles[p.uid]) ? "mafi" : "vote"}">${rr[1]} ${rr[0]}</span>`);
@@ -477,6 +702,7 @@ function render() {
     </div>`;
   }).join("");
   if (lk.connected) attachAllTracks();
+  $("settingsBox").style.display = (!game || game.winner) ? "block" : "none";
 
   if (game && game.winner) showEnd();
 }
@@ -589,7 +815,8 @@ async function runBots() {
     const act = (kind, target) => b.c.rpc("act", { p_game: game.id, p_kind: kind, p_target: target || null });
     const others = seatsG.filter(s => s.alive && s.uid !== b.uid);
     try {
-      if (game.phase === "reveal") await act("ready");
+      if (game.phase === "reveal" || game.phase === "zeronight") await act("ready");
+      else if (game.phase === "allraise") await act(Math.random() < 0.5 ? "raise_yes" : "raise_no");
       else if (game.phase === "day") {
         if (others.length && Math.random() < 0.45) await act("nominate", pick(others).uid);
         await act("ready");
