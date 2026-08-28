@@ -265,15 +265,15 @@ const PHASE_TITLE = {
 const PRESETS = {
   sport: { name:"Спортивная (ФИИМ)", kind:"sport", day_seconds_per_player:60, last_word_seconds:60,
     zero_night_seconds:60, night_step_seconds:25, tie:"revoteThenJointDeath", can_nominate_self:false,
-    allow_mafia_skip_shot:false, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4,
+    allow_mafia_skip_shot:false, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4, free_discussion_seconds:60, last_word_for_night_victims:true,
     roles:{don:true, sheriff:true, doctor:false, maniac:false, lover:false} },
   yard: { name:"Дворовая", kind:"yard", day_seconds_per_player:45, last_word_seconds:30,
     zero_night_seconds:30, night_step_seconds:30, tie:"revoteThenNobody", can_nominate_self:true,
-    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:false, reveal_on_death:false, max_fouls:5,
+    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:false, reveal_on_death:false, max_fouls:5, free_discussion_seconds:60, last_word_for_night_victims:true,
     roles:{don:true, sheriff:true, doctor:true, maniac:false, lover:false} },
   extended: { name:"Расширенная", kind:"extended", day_seconds_per_player:60, last_word_seconds:60,
     zero_night_seconds:60, night_step_seconds:30, tie:"revoteThenAllRaise", can_nominate_self:false,
-    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4,
+    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4, free_discussion_seconds:60, last_word_for_night_victims:true,
     roles:{don:true, sheriff:true, doctor:true, maniac:true, lover:false} }
 };
 const TIE_RU = { revoteThenNobody:"переголосовка, затем никто не выбывает",
@@ -323,6 +323,8 @@ function sfx(name) {
     death:   () => { tone(180,0,.5,"sawtooth",.07); tone(90,.12,.8,"sine",.08); },
     morning: () => { tone(523,0,.2); tone(587,.12,.2); tone(784,.26,.5,"sine",.08); },
     check:   () => { tone(880,0,.12,"sine",.06); tone(1175,.13,.25,"sine",.06); },
+    freetalk:() => { tone(494,0,.14,"triangle",.06); tone(587,.12,.14,"triangle",.06); tone(494,.24,.3,"triangle",.05); },
+    lastword:() => { tone(392,0,.3,"sine",.07); tone(330,.22,.5,"sine",.06); },
     winRed:  () => { [523,659,784,1047].forEach((f,i)=>tone(f,i*.14,.5,"sine",.09)); },
     winBlack:() => { [392,349,294,196].forEach((f,i)=>tone(f,i*.16,.6,"sawtooth",.07)); },
     winManiac:()=> { [440,466,554,740].forEach((f,i)=>tone(f,i*.13,.5,"square",.06)); },
@@ -568,11 +570,13 @@ function renderSettings() {
     num("Последнее слово, сек", "last_word_seconds", 10, 180),
     num("Нулевая ночь, сек", "zero_night_seconds", 10, 180),
     num("Фолов до удаления", "max_fouls", 2, 10),
+    num("Балаган, сек (0 — выключен)", "free_discussion_seconds", 0, 300),
     chk("Можно выставлять себя", "can_nominate_self", preset.can_nominate_self),
     chk("Мафия может стрелять в воздух", "allow_mafia_skip_shot", preset.allow_mafia_skip_shot),
     chk("Пропускать нулевую ночь", "skip_zero_night", preset.skip_zero_night),
     chk("Речь по кругу (говорит один)", "speech_order", preset.speech_order),
     chk("Показывать роль выбывшего", "reveal_on_death", preset.reveal_on_death),
+    chk("Последнее слово убитым ночью", "last_word_for_night_victims", preset.last_word_for_night_victims !== false),
     `<label>При ничьей<select onchange="setField('tie', this.value)">` +
       Object.entries(TIE_RU).map(([k, v]) => `<option value="${k}" ${preset.tie === k ? "selected" : ""}>${v}</option>`).join("") +
       `</select></label>`
@@ -824,10 +828,12 @@ function speechAllowed() {
   if (!game || game.winner) return true;             // после игры говорят все
   if (amNarrator()) return true;                     // ведущий говорит всегда
   const my = mySeat();
-  if (!my || !my.alive) return false;                // выбывшие молчат
   const ph = game.phase;
-  if (ph === "night" || ph === "zeronight") return false;   // ночью в общей комнате тишина
+  // последнее слово говорит уже выбывший — это единственный случай, когда мёртвому дают микрофон
   if (ph === "lastword") return game.state.lastword === me.id;
+  if (!my || !my.alive) return false;                // остальные выбывшие молчат
+  if (ph === "night" || ph === "zeronight") return false;   // ночью в общей комнате тишина
+  if (ph === "freetalk") return true;                // балаган — говорят все живые
   if (ph === "day" && preset && preset.speech_order) return currentSpeaker() === me.id;
   return true;                                       // день без кругов, голосование, утро
 }
@@ -903,7 +909,8 @@ function renderMafiaRoom() {
 }
 
 // --- Хроника партии (только публичные факты) ---
-const LOG_PHASE_RU = { day:"☀️ День", night:"🌙 Ночь", voting:"🗳 Голосование", allraise:"✋ Подъём всех" };
+const LOG_PHASE_RU = { day:"☀️ День", night:"🌙 Ночь", voting:"🗳 Голосование", allraise:"✋ Подъём всех",
+  freetalk:"🗣 Балаган", lastword:"🎤 Последнее слово", morning:"🌅 Утро" };
 const CAUSE_LOG = { voted:"выбывает по голосованию", night:"убит ночью",
   joint:"выбывает — обоюдное выбывание", allraise:"выбывает — подъём всех", removed:"удалён ведущим",
   fouls:"удалён за фолы", kicked:"удалён из игры", left:"вышел из игры" };
@@ -972,6 +979,7 @@ function phaseHint() {
         ? `Ты выставил #${chosen.seat} ${chosen.nickname} — выбор окончательный, сменить нельзя`
         : "Обсуждайте! Клик по игроку — выставить на голосование (выбор окончательный)";
     }
+    case "freetalk": return "🗣 Балаган: говорят все сразу. Выставлять уже нельзя";
     case "voting": return "Тайное голосование: клик по кандидату с оранжевой рамкой";
     case "lastword": {
       const lw = seatsG.find(s => s.uid === game.state.lastword);
@@ -1009,7 +1017,7 @@ function render() {
   } else $("gamePanel").style.display = "none";
 
   const my = mySeat();
-  const readyPhases = ["day","morning","zeronight"];
+  const readyPhases = ["day","morning","zeronight","freetalk"];
   const speechDay = inGame && game.phase === "day" && preset && preset.speech_order;
   const myTurn = speechDay && currentSpeaker() === me.id;
   $("endSpeechBtn").style.display = myTurn ? "block" : "none";
@@ -1017,6 +1025,7 @@ function render() {
     || inGame && game.phase === "lastword" && game.state.lastword === me.id);
   $("readyBtn").style.display = showReady ? "block" : "none";
   $("readyBtn").textContent = game && game.phase === "day" ? "Завершить обсуждение" :
+    game && game.phase === "freetalk" ? "Завершить балаган" :
     game && game.phase === "lastword" ? "Закончить речь" : "Готов";
   $("hostNextBtn").style.display = inGame && room.mode === "host" && amHost() ? "block" : "none";
   $("donModeBtn").style.display = inGame && game.phase === "night" && myRole && myRole.role === "don" ? "block" : "none";
