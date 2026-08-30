@@ -250,10 +250,11 @@
   .rating-scroll { overflow-x:auto; }
   .rating-table { width:100%; border-collapse:collapse; font-size:13.5px; }
   .rating-table th { text-align:right; font:600 10px var(--sans); text-transform:uppercase;
-    letter-spacing:.18em; color:var(--gold-dim); padding:0 0 8px; white-space:nowrap; }
+    letter-spacing:.18em; color:var(--gold-dim); padding:0 0 8px 14px; white-space:nowrap; }
   .rating-table th:nth-child(1), .rating-table th:nth-child(2) { text-align:left; }
-  .rating-table td { padding:9px 0; border-top:1px solid rgba(255,255,255,.05); text-align:right;
-    font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .rating-table td { padding:9px 0 9px 14px; border-top:1px solid rgba(255,255,255,.05); text-align:right;
+    font-variant-numeric:tabular-nums; white-space:nowrap; min-width:56px; }
+  .rating-table th:nth-child(1), .rating-table td:nth-child(1) { padding-left:0; min-width:40px; }
   .rating-table td:nth-child(1) { text-align:left; width:44px; color:var(--muted); font-family:var(--mono); }
   .rating-table td:nth-child(2) { text-align:left; width:100%; font-weight:600; padding-right:12px;
     overflow:hidden; text-overflow:ellipsis; max-width:0; }
