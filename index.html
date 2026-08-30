@@ -658,6 +658,7 @@ async function signOut() {
   await sb.auth.signOut();
   me = null; myNick = "";
   $("homeView").style.display = "none";
+  $("ratingBlock").style.display = "none";
   $("authView").style.display = "block";
 }
 
@@ -668,6 +669,7 @@ async function afterLogin() {
   if (data.session.user.is_anonymous || !data.session.user.email) {
     await sb.auth.signOut(); me = null;
     $("authView").style.display = "block"; $("homeView").style.display = "none";
+    $("ratingBlock").style.display = "none";
     return false;
   }
   me = data.session.user;
