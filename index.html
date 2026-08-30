@@ -1094,25 +1094,29 @@ function currentSpeaker() {
 }
 
 let avState = { mic:null, cam:null, mMic:null, mCam:null };
+let hasMic = true, hasCam = true;
 const audioEls = new Map();
 const weakLink = new Set();
 function applyAV() {
   muteForbiddenVoices();                 // чужие голоса глушим независимо от своего подключения
   if (!lk.room || !lk.connected) return;
   const allowed = speechAllowed();
-  const wantMic = !!(allowed && micOn), wantCam = !!camOn;
+  const wantMic = !!(allowed && micOn && hasMic), wantCam = !!(camOn && hasCam);
   if (avState.mic !== wantMic) { avState.mic = wantMic; lk.room.localParticipant.setMicrophoneEnabled(wantMic).catch(()=>{}); }
   if (avState.cam !== wantCam) { avState.cam = wantCam; lk.room.localParticipant.setCameraEnabled(wantCam).catch(()=>{}); }
   if (lkMafia.room && lkMafia.connected) {
-    if (avState.mMic !== micOn) { avState.mMic = micOn; lkMafia.room.localParticipant.setMicrophoneEnabled(micOn).catch(()=>{}); }
-    if (avState.mCam !== camOn) { avState.mCam = camOn; lkMafia.room.localParticipant.setCameraEnabled(camOn).catch(()=>{}); }
+    const mMic = !!(micOn && hasMic), mCam = !!(camOn && hasCam);
+    if (avState.mMic !== mMic) { avState.mMic = mMic; lkMafia.room.localParticipant.setMicrophoneEnabled(mMic).catch(()=>{}); }
+    if (avState.mCam !== mCam) { avState.mCam = mCam; lkMafia.room.localParticipant.setCameraEnabled(mCam).catch(()=>{}); }
   }
   const micB = $("micBtn"), camB = $("camBtn");
-  micB.textContent = micOn ? (allowed ? "🎤" : "🎤🚫") : "🔇";
-  micB.className = "icon-btn" + (micOn ? (allowed ? "" : " locked") : " off");
-  micB.title = !micOn ? "Микрофон выключен тобой" : (allowed ? "Микрофон включён" : "Сейчас говорить нельзя по правилам фазы");
-  camB.textContent = camOn ? "📷" : "🚫📷";
-  camB.className = "icon-btn" + (camOn ? "" : " off");
+  micB.textContent = !hasMic ? "🎤✖" : micOn ? (allowed ? "🎤" : "🎤🚫") : "🔇";
+  micB.className = "icon-btn" + (!hasMic ? " off" : micOn ? (allowed ? "" : " locked") : " off");
+  micB.title = !hasMic ? "Микрофон не найден" : !micOn ? "Микрофон выключен тобой"
+    : (allowed ? "Микрофон включён" : "Сейчас говорить нельзя по правилам фазы");
+  camB.textContent = !hasCam ? "📷✖" : camOn ? "📷" : "🚫📷";
+  camB.className = "icon-btn" + (!hasCam || !camOn ? " off" : "");
+  camB.title = !hasCam ? "Камера не найдена" : camOn ? "Камера включена" : "Камера выключена";
 }
 function toggleMic() { micOn = !micOn; localStorage.setItem("micOn", micOn ? "1" : "0"); applyAV(); sfx("tick"); }
 function toggleCam() { camOn = !camOn; localStorage.setItem("camOn", camOn ? "1" : "0"); applyAV(); sfx("tick"); }
@@ -1127,7 +1131,8 @@ async function syncMafiaRoom() {
     try {
       lkMafia.room = new LivekitClient.Room(roomOptions());
       await lkMafia.room.connect(data.url, data.token);
-      await lkMafia.room.localParticipant.enableCameraAndMicrophone();
+      try { await lkMafia.room.localParticipant.setMicrophoneEnabled(hasMic); } catch (e) { hasMic = false; }
+      try { await lkMafia.room.localParticipant.setCameraEnabled(hasCam && camOn); } catch (e) { hasCam = false; }
       lkMafia.connected = true;
       lkMafia.room.on("trackSubscribed", renderMafiaRoom);
       lkMafia.room.on("participantConnected", renderMafiaRoom);
@@ -1562,10 +1567,19 @@ async function connectVideo() {
         `<button class="ghost" style="width:auto;display:inline-block" onclick="connectVideo()">Подключить заново</button>`;
     });
     await lk.room.connect(data.url, data.token);
-    await lk.room.localParticipant.enableCameraAndMicrophone();
+    // Подключение к комнате и свои устройства — разные вещи: без камеры или микрофона
+    // человек всё равно должен видеть и слышать остальных.
     lk.connected = true;
     avState = { mic:null, cam:null, mMic:null, mCam:null };
-    $("videoHint").textContent = "";
+    hasMic = true; hasCam = true;
+    try { await lk.room.localParticipant.setMicrophoneEnabled(true); }
+    catch (e) { hasMic = false; }
+    try { await lk.room.localParticipant.setCameraEnabled(true); }
+    catch (e) { hasCam = false; }
+    $("videoHint").innerHTML = !hasCam && !hasMic
+      ? "Камеры и микрофона нет — тебя не видно и не слышно, но остальных ты видишь и слышишь."
+      : !hasCam ? "Камера не найдена — тебя не видно, зато остальных видно и слышно."
+      : !hasMic ? "Микрофон не найден — тебя не слышно, остальных слышишь." : "";
     lk.room.on("connectionQualityChanged", (q, p) => {
       if (!p) return;
       if (q === "poor") weakLink.add(p.identity); else weakLink.delete(p.identity);
