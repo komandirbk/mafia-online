@@ -444,6 +444,9 @@
         <button id="skipCheckBtn" class="ghost" style="display:none" onclick="skipDonCheck()">🚫 Пропустить проверку</button>
         <button id="skipNightBtn" class="ghost" style="display:none" onclick="skipNight()">🚫 Пропустить ход</button>
         <button id="checksBtn" class="ghost" style="display:none" onclick="openChecks()">🔍 Мои проверки</button>
+        <button id="balYesBtn" style="display:none" onclick="voteBalagan(true)">🗣 За балаган</button>
+        <button id="balNoBtn" class="ghost" style="display:none" onclick="voteBalagan(false)">Сразу голосовать</button>
+        <button id="hostBalaganBtn" class="ghost" style="display:none" onclick="hostBalagan()">🗣 Открыть балаган</button>
         <button id="diagBtn" class="ghost" onclick="showDiag()" title="Что со связью">🩺 Связь</button>
         <button id="raiseYesBtn" style="display:none" onclick="raise(true)">✋ Поднять руку — за</button>
         <button id="raiseNoBtn" class="ghost" style="display:none" onclick="raise(false)">Против</button>
@@ -526,22 +529,22 @@ const ROLE_RU = {
 const PHASE_TITLE = {
   reveal:"Раздача ролей", zeronight:"Нулевая ночь", day:"День — обсуждение", voting:"Голосование",
   allraise:"Подъём всех", lastword:"Последнее слово", night:"Ночь", morning:"Утро",
-  freetalk:"Балаган", finished:"Разбор полётов"
+  balaganvote:"Голосуем за балаган", freetalk:"Балаган", finished:"Разбор полётов"
 };
 
 // Пресеты — 1в1 как встроенные в iOS-приложении
 const PRESETS = {
   sport: { name:"Спортивная (ФИИМ)", kind:"sport", day_seconds_per_player:60, last_word_seconds:60,
     zero_night_seconds:60, night_step_seconds:25, tie:"revoteThenJointDeath", can_nominate_self:false,
-    allow_mafia_skip_shot:false, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4, free_discussion_seconds:60, last_word_for_night_victims:true,
+    allow_mafia_skip_shot:false, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4, free_discussion_seconds:60, balagan_limit:3, balagan_vote_seconds:10, last_word_for_night_victims:true,
     roles:{don:true, sheriff:true, doctor:false, maniac:false, lover:false} },
   yard: { name:"Дворовая", kind:"yard", day_seconds_per_player:45, last_word_seconds:30,
     zero_night_seconds:30, night_step_seconds:30, tie:"revoteThenNobody", can_nominate_self:true,
-    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:false, reveal_on_death:false, max_fouls:5, free_discussion_seconds:60, last_word_for_night_victims:true,
+    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:false, reveal_on_death:false, max_fouls:5, free_discussion_seconds:60, balagan_limit:3, balagan_vote_seconds:10, last_word_for_night_victims:true,
     roles:{don:true, sheriff:true, doctor:true, maniac:false, lover:false} },
   extended: { name:"Расширенная", kind:"extended", day_seconds_per_player:60, last_word_seconds:60,
     zero_night_seconds:60, night_step_seconds:30, tie:"revoteThenAllRaise", can_nominate_self:false,
-    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4, free_discussion_seconds:60, last_word_for_night_victims:true,
+    allow_mafia_skip_shot:true, skip_zero_night:false, speech_order:true, reveal_on_death:false, max_fouls:4, free_discussion_seconds:60, balagan_limit:3, balagan_vote_seconds:10, last_word_for_night_victims:true,
     roles:{don:true, sheriff:true, doctor:true, maniac:true, lover:false} }
 };
 const TIE_RU = { revoteThenNobody:"переголосовка → никто не уезжает",
@@ -852,6 +855,8 @@ function renderSettings() {
       num("Последнее слово", "last_word_seconds", 10, 180, "сек"),
       num("Нулевая ночь", "zero_night_seconds", 10, 180, "сек"),
       num("Балаган", "free_discussion_seconds", 0, 300, "сек · 0 — выкл"),
+      num("Балаганов за партию", "balagan_limit", 0, 5, "раз"),
+      num("Голосование за балаган", "balagan_vote_seconds", 5, 60, "сек"),
       num("Фолы до удаления", "max_fouls", 2, 10, "фола"),
     ]),
     group("Правила дня", [
@@ -1066,6 +1071,16 @@ async function skipNight() {
   if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
   myActions[kind] = "skip"; sfx("tick"); render();
 }
+async function voteBalagan(yes) {
+  const { data } = await sb.rpc("act", { p_game: game.id, p_kind: yes ? "balagan_yes" : "balagan_no" });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  myActions.balagan = yes ? "yes" : "no"; sfx("tick"); render();
+}
+async function hostBalagan() {
+  const { data } = await sb.rpc("host_balagan", { p_game: game.id });
+  if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
+  sfx("freetalk"); await gameTick();
+}
 async function raise(yes) {
   const { data } = await sb.rpc("act", { p_game: game.id, p_kind: yes ? "raise_yes" : "raise_no" });
   if (data && data.error) { $("phaseSub").textContent = "⚠ " + ruErr(data.error); return; }
@@ -1135,6 +1150,7 @@ function ruErr(e) {
     not_host:"Только ведущий комнаты может это делать", not_your_turn:"Сейчас говорит другой игрок",
     already_nominated:"Ты уже выставил игрока — выбор окончательный",
     self_check:"Себя проверять нельзя",
+    balagan_limit:"Балаганов на эту партию больше не осталось",
     skip_not_allowed:"Выстрел в воздух запрещён настройками", self_heal_used:"Себя можно лечить только раз за игру" }[e] || e;
 }
 
@@ -1327,7 +1343,8 @@ function renderMafiaRoom() {
 
 // --- Хроника партии (только публичные факты) ---
 const LOG_PHASE_RU = { day:"☀️ День", night:"🌙 Ночь", voting:"🗳 Голосование", allraise:"✋ Подъём всех",
-  freetalk:"🗣 Балаган", lastword:"🎤 Последнее слово", morning:"🌅 Утро" };
+  freetalk:"🗣 Балаган", balaganvote:"🗳 Голосование за балаган",
+  lastword:"🎤 Последнее слово", morning:"🌅 Утро" };
 const CAUSE_LOG = { voted:"выбывает по голосованию", night:"убит ночью",
   joint:"выбывает — обоюдное выбывание", allraise:"выбывает — подъём всех", removed:"удалён ведущим",
   fouls:"удалён за фолы", kicked:"удалён из игры", left:"вышел из игры" };
@@ -1344,6 +1361,8 @@ function renderLog() {
     else if (e.t === "revote") text = "Ничья — переголосовка";
     else if (e.t === "tie_nobody") text = "Ничья и после переголосовки — никто не выбывает";
     else if (e.t === "allraise") text = `Подъём всех: «за» ${e.yes} из ${e.alive}`;
+    else if (e.t === "balagan") text = `🗣 Балаган ${e.n}` + (e.yes != null ? ` — «за» ${e.yes} из ${e.alive}` : " — открыл ведущий");
+    else if (e.t === "balagan_no") text = `Балагана не будет — «за» ${e.yes} из ${e.alive}`;
     else if (e.t === "foul") text = `⚠ <b>${e.who}</b> получает фол (${e.n})`;
     else if (e.t === "end") text = "🏁 " + ({red:"Победа мирных", black:"Победа мафии", maniac:"Победил маньяк"}[e.winner] || "Игра окончена");
     else if (e.t === "death") text = `☠ <b>${e.who}</b> ${CAUSE_LOG[e.cause] || e.cause}` + (e.role ? ` (${(ROLE_RU[e.role]||[e.role])[0]})` : "");
@@ -1396,7 +1415,14 @@ function phaseHint() {
         ? `Ты выставил #${chosen.seat} ${chosen.nickname} — выбор окончательный, сменить нельзя`
         : "Обсуждайте! Клик по игроку — выставить на голосование (выбор окончательный)";
     }
-    case "freetalk": return "🗣 Балаган: говорят все сразу. Выставлять уже нельзя";
+    case "balaganvote": {
+      const left = (preset ? (preset.balagan_limit ?? 3) : 3) - ((game.state.balagans) || 0);
+      return `Открыть балаган перед голосованием? Нужно большинство · осталось балаганов: ${left}`;
+    }
+    case "freetalk": {
+      const n = (game.state.balagans) || 1;
+      return `🗣 Балаган ${n}: говорят все сразу. Выставлять уже нельзя`;
+    }
     case "voting": return "Тайное голосование: клик по кандидату с оранжевой рамкой";
     case "lastword": {
       const lw = seatsG.find(s => s.uid === game.state.lastword);
@@ -1468,6 +1494,15 @@ function render() {
         maniac:"🚫 Не убивать", lover:"🚫 Никого не отвлекать" }[myRole && myRole.role] || "🚫 Пропустить ход";
   $("checksBtn").style.display = myChecks.length && myRole &&
     ["sheriff","don"].includes(myRole.role) ? "block" : "none";
+  const inBalVote = inGame && game.phase === "balaganvote" && my && my.alive;
+  $("balYesBtn").style.display = inBalVote ? "block" : "none";
+  $("balNoBtn").style.display = inBalVote ? "block" : "none";
+  $("balYesBtn").textContent = myActions.balagan === "yes" ? "🗣 За балаган ✓" : "🗣 За балаган";
+  $("balNoBtn").textContent = myActions.balagan === "no" ? "Сразу голосовать ✓" : "Сразу голосовать";
+  const balLeft = preset ? (preset.balagan_limit ?? 3) - ((game && game.state.balagans) || 0) : 0;
+  $("hostBalaganBtn").style.display =
+    inGame && room.mode === "host" && amHost() && game.phase === "day" && balLeft > 0 ? "block" : "none";
+  $("hostBalaganBtn").textContent = `🗣 Открыть балаган (осталось ${balLeft})`;
   const inRaise = inGame && game.phase === "allraise" && my && my.alive;
   $("raiseYesBtn").style.display = inRaise ? "block" : "none";
   $("raiseNoBtn").style.display = inRaise ? "block" : "none";
