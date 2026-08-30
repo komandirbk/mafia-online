@@ -247,6 +247,10 @@
     text-transform:uppercase; color:var(--gold); }
   .rating-head button { width:auto; padding:7px 14px; font-size:12px; }
   .rating-note { color:var(--dim); font-size:11.5px; margin-bottom:14px; }
+  .rating-tabs { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 0; }
+  .rating-tabs .preset-btn { padding:6px 13px; font-size:12.5px; }
+  .rating-table td.split { color:var(--muted); font-size:12.5px; }
+  .rating-table td.split b { color:var(--text); }
   .rating-scroll { overflow-x:auto; }
   .rating-table { width:100%; border-collapse:collapse; font-size:13.5px; }
   .rating-table th { text-align:right; font:600 10px var(--sans); text-transform:uppercase;
@@ -367,10 +371,20 @@
       <h3>Зал славы</h3>
       <button class="ghost" id="ratingRefresh" onclick="loadRating()">Обновить</button>
     </div>
-    <div class="rating-note">Очко за партию, три за победу, надбавка за победы в меньшинстве</div>
+    <div class="rating-tabs" id="ratingPeriods">
+      <button class="preset-btn on" data-period="all" onclick="setRating('period','all')">За всё время</button>
+      <button class="preset-btn" data-period="month" onclick="setRating('period','month')">Месяц</button>
+      <button class="preset-btn" data-period="week" onclick="setRating('period','week')">Неделя</button>
+    </div>
+    <div class="rating-tabs" id="ratingScopes">
+      <button class="preset-btn on" data-scope="all" onclick="setRating('scope','all')">Все игроки</button>
+      <button class="preset-btn" data-scope="circle" onclick="setRating('scope','circle')">Мой круг</button>
+    </div>
+    <div class="rating-note">Очко за партию, три за победу, +1 за победу мафией, +2 маньяком</div>
     <div class="rating-scroll">
       <table class="rating-table">
-        <thead><tr><th>#</th><th>Игрок</th><th>Партий</th><th>Побед</th><th>%</th><th>Очки</th></tr></thead>
+        <thead><tr><th>#</th><th>Игрок</th><th>Партий</th><th>Побед</th><th>%</th>
+          <th>Город</th><th>Мафия</th><th>Очки</th></tr></thead>
         <tbody id="ratingBody"></tbody>
       </table>
     </div>
@@ -1621,22 +1635,36 @@ async function loadStats() {
 
 // --- Рейтинг игроков ---
 const MEDALS = { 1:"🥇", 2:"🥈", 3:"🥉" };
+let ratingPeriod = "all", ratingScope = "all";
+function setRating(what, value) {
+  if (what === "period") ratingPeriod = value; else ratingScope = value;
+  document.querySelectorAll("#ratingPeriods .preset-btn").forEach(b =>
+    b.classList.toggle("on", b.dataset.period === ratingPeriod));
+  document.querySelectorAll("#ratingScopes .preset-btn").forEach(b =>
+    b.classList.toggle("on", b.dataset.scope === ratingScope));
+  loadRating();
+}
 async function loadRating() {
   const box = $("ratingBlock");
   if (!me) { box.style.display = "none"; return; }
   box.style.display = "block";
   const btn = $("ratingRefresh"); btn.disabled = true;
-  const [{ data: rows }, { data: mine }] = await Promise.all([
-    sb.rpc("leaderboard", { p_limit: 50 }),
-    sb.rpc("my_rank"),
-  ]);
+  const { data } = await sb.rpc("leaderboard",
+    { p_limit: 50, p_period: ratingPeriod, p_scope: ratingScope });
   btn.disabled = false;
-  const list = rows || [];
+  const list = (data && data.rows) || [];
+  const mine = data && data.me;
+  const empty = ratingScope === "circle"
+    ? "Сыграй партию с друзьями — здесь будет рейтинг вашей компании"
+    : ratingPeriod === "all"
+      ? "Здесь появятся результаты после первых партий"
+      : "За этот период партий ещё не было";
   if (!list.length) {
-    $("ratingBody").innerHTML = `<tr><td colspan="6" class="rating-empty">Здесь появятся результаты после первых партий</td></tr>`;
+    $("ratingBody").innerHTML = `<tr><td colspan="8" class="rating-empty">${empty}</td></tr>`;
     $("ratingMe").textContent = "";
     return;
   }
+  const split = (w, n, rate) => n ? `<b>${w}</b>/${n}${rate != null ? ` · ${rate}%` : ""}` : "—";
   $("ratingBody").innerHTML = list.map(r => `
     <tr class="${r.uid === me.id ? "me" : ""}">
       <td>${MEDALS[r.rank] ? `<span class="medal">${MEDALS[r.rank]}</span>` : r.rank}</td>
@@ -1644,12 +1672,15 @@ async function loadRating() {
       <td>${r.games}</td>
       <td>${r.wins}</td>
       <td>${r.win_rate}%</td>
+      <td class="split">${split(r.wins_red, r.as_red, r.rate_red)}</td>
+      <td class="split">${split(r.wins_black, r.as_black, r.rate_black)}</td>
       <td class="score">${r.score}</td>
     </tr>`).join("");
   $("ratingMe").innerHTML = mine && mine.rank
-    ? `Ты на <b>${mine.rank}</b> месте из <b>${mine.total}</b> · очков <b>${mine.score}</b> · ` +
-      `партий <b>${mine.games}</b> · побед <b>${mine.wins}</b> (${mine.win_rate}%)`
-    : "Сыграй первую партию, чтобы попасть в рейтинг";
+    ? `Ты на <b>${mine.rank}</b> месте из <b>${data.total}</b> · очков <b>${mine.score}</b> · ` +
+      `партий <b>${mine.games}</b> · побед <b>${mine.wins}</b> (${mine.win_rate}%)` +
+      (mine.as_maniac ? ` · маньяком <b>${mine.wins_maniac}</b>/${mine.as_maniac}` : "")
+    : "В этом зачёте у тебя пока нет партий";
 }
 
 // --- Экран не гаснет во время игры ---
