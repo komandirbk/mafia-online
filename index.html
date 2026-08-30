@@ -2004,6 +2004,7 @@ async function runBots() {
       if (b.role === "don" && game.phase === "night") await act("don_check");  // дон закрывает проверку
       if (game.phase === "reveal" || game.phase === "zeronight") await act("ready");
       else if (game.phase === "allraise") await act(Math.random() < 0.5 ? "raise_yes" : "raise_no");
+      else if (game.phase === "balaganvote") await act(Math.random() < 0.6 ? "balagan_yes" : "balagan_no");
       else if (game.phase === "day") {
         if (others.length && Math.random() < 0.45) await act("nominate", pick(others).uid);
         await act("ready");
@@ -2012,7 +2013,7 @@ async function runBots() {
         if (cands.length) await act("vote", pick(cands));
       } else if (game.phase === "lastword") {
         if (game.state.lastword === b.uid) await act("ready");
-      } else if (game.phase === "morning") await act("ready");
+      } else if (game.phase === "morning" || game.phase === "freetalk") await act("ready");
       else if (game.phase === "night" && others.length) {
         const t = pick(others).uid;
         if (b.role === "mafia") await act("mafia_kill", t);
