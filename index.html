@@ -240,6 +240,32 @@
     font-variant-numeric:tabular-nums; margin-right:9px; }
   .log .le.dead b { color:var(--blood); }
 
+  /* ——— рейтинг ——— */
+  .rating { max-width:720px; margin:18px auto 0; padding:20px 18px; }
+  .rating-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:4px; }
+  .rating-head h3 { font-family:var(--serif); font-weight:700; font-size:20px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--gold); }
+  .rating-head button { width:auto; padding:7px 14px; font-size:12px; }
+  .rating-note { color:var(--dim); font-size:11.5px; margin-bottom:14px; }
+  .rating-scroll { overflow-x:auto; }
+  .rating-table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  .rating-table th { text-align:right; font:600 10px var(--sans); text-transform:uppercase;
+    letter-spacing:.18em; color:var(--gold-dim); padding:0 0 8px; white-space:nowrap; }
+  .rating-table th:nth-child(1), .rating-table th:nth-child(2) { text-align:left; }
+  .rating-table td { padding:9px 0; border-top:1px solid rgba(255,255,255,.05); text-align:right;
+    font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .rating-table td:nth-child(1) { text-align:left; width:44px; color:var(--muted); font-family:var(--mono); }
+  .rating-table td:nth-child(2) { text-align:left; width:100%; font-weight:600; padding-right:12px;
+    overflow:hidden; text-overflow:ellipsis; max-width:0; }
+  .rating-table td.score { color:var(--gold); font-weight:700; font-family:var(--mono); }
+  .rating-table tr.me td { background:rgba(245,212,134,.07); }
+  .rating-table tr.me td:nth-child(2)::after { content:" — ты"; color:var(--gold-dim); font-weight:400; }
+  .rating-table .medal { font-size:15px; }
+  .rating-me { margin-top:12px; padding-top:10px; border-top:1px solid var(--line-soft);
+    font-size:12.5px; color:var(--muted); }
+  .rating-me b { color:var(--gold); font-family:var(--mono); }
+  .rating-empty { color:var(--dim); font-size:13px; padding:14px 0; text-align:center; }
+
   /* ——— статистика ——— */
   .stats { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; justify-content:center; }
   .stats .chip { display:inline-flex; align-items:baseline; gap:6px; font-size:12px; color:var(--muted);
@@ -334,6 +360,21 @@
     </select>
     <button class="ghost" onclick="create()">Создать комнату</button>
   </div>
+
+  <section id="ratingBlock" class="card rating" style="display:none">
+    <div class="rating-head">
+      <h3>Зал славы</h3>
+      <button class="ghost" id="ratingRefresh" onclick="loadRating()">Обновить</button>
+    </div>
+    <div class="rating-note">Очко за партию, три за победу, надбавка за победы в меньшинстве</div>
+    <div class="rating-scroll">
+      <table class="rating-table">
+        <thead><tr><th>#</th><th>Игрок</th><th>Партий</th><th>Побед</th><th>%</th><th>Очки</th></tr></thead>
+        <tbody id="ratingBody"></tbody>
+      </table>
+    </div>
+    <div class="rating-me" id="ratingMe"></div>
+  </section>
 
   <div id="roomView">
     <div class="card">
@@ -641,7 +682,7 @@ async function afterLogin() {
 function showHome() {
   $("nickname").value = myNick;
   $("meNick").textContent = myNick;
-  loadStats();
+  loadStats(); loadRating();
   $("authView").style.display = "none";
   $("nickOverlay").style.display = "none";
   $("homeView").style.display = "block";
@@ -699,6 +740,7 @@ async function enterRoom(r) {
   room = r;
   history.replaceState(null, "", "?r=" + r.code);
   $("homeView").style.display = "none";
+  $("ratingBlock").style.display = "none";
   $("roomView").style.display = "block";
   document.body.classList.add("in-room");
   codeShown = false;
@@ -1574,6 +1616,39 @@ async function loadStats() {
     : `<span class="chip empty">Партий пока нет — сыграй первую</span>`;
 }
 
+// --- Рейтинг игроков ---
+const MEDALS = { 1:"🥇", 2:"🥈", 3:"🥉" };
+async function loadRating() {
+  const box = $("ratingBlock");
+  if (!me) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  const btn = $("ratingRefresh"); btn.disabled = true;
+  const [{ data: rows }, { data: mine }] = await Promise.all([
+    sb.rpc("leaderboard", { p_limit: 50 }),
+    sb.rpc("my_rank"),
+  ]);
+  btn.disabled = false;
+  const list = rows || [];
+  if (!list.length) {
+    $("ratingBody").innerHTML = `<tr><td colspan="6" class="rating-empty">Здесь появятся результаты после первых партий</td></tr>`;
+    $("ratingMe").textContent = "";
+    return;
+  }
+  $("ratingBody").innerHTML = list.map(r => `
+    <tr class="${r.uid === me.id ? "me" : ""}">
+      <td>${MEDALS[r.rank] ? `<span class="medal">${MEDALS[r.rank]}</span>` : r.rank}</td>
+      <td>${r.nickname}</td>
+      <td>${r.games}</td>
+      <td>${r.wins}</td>
+      <td>${r.win_rate}%</td>
+      <td class="score">${r.score}</td>
+    </tr>`).join("");
+  $("ratingMe").innerHTML = mine && mine.rank
+    ? `Ты на <b>${mine.rank}</b> месте из <b>${mine.total}</b> · очков <b>${mine.score}</b> · ` +
+      `партий <b>${mine.games}</b> · побед <b>${mine.wins}</b> (${mine.win_rate}%)`
+    : "Сыграй первую партию, чтобы попасть в рейтинг";
+}
+
 // --- Экран не гаснет во время игры ---
 let wakeLock = null;
 async function keepAwake(on) {
@@ -1606,11 +1681,12 @@ async function leave(silent) {
   audioEls.forEach(el => { try { el.pause(); el.srcObject = null; el.remove(); } catch (e) {} });
   audioEls.clear(); weakLink.clear();
   keepAwake(false); online = new Set(); speaking = new Set(); endShown = false;
-  loadStats();
+  loadStats(); loadRating();
   room = null; game = null; myRole = null;
   history.replaceState(null, "", location.pathname);
   $("roomView").style.display = "none";
   $("homeView").style.display = me ? "block" : "none";
+  $("ratingBlock").style.display = me ? "block" : "none";
   $("authView").style.display = me ? "none" : "block";
 }
 
