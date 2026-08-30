@@ -381,6 +381,7 @@
         <button id="skipCheckBtn" class="ghost" style="display:none" onclick="skipDonCheck()">🚫 Пропустить проверку</button>
         <button id="skipNightBtn" class="ghost" style="display:none" onclick="skipNight()">🚫 Пропустить ход</button>
         <button id="checksBtn" class="ghost" style="display:none" onclick="openChecks()">🔍 Мои проверки</button>
+        <button id="diagBtn" class="ghost" onclick="showDiag()" title="Что со связью">🩺 Связь</button>
         <button id="raiseYesBtn" style="display:none" onclick="raise(true)">✋ Поднять руку — за</button>
         <button id="raiseNoBtn" class="ghost" style="display:none" onclick="raise(false)">Против</button>
       </div>
@@ -407,6 +408,17 @@
     <input id="nickInput" maxlength="24" placeholder="Никнейм" autocomplete="nickname">
     <div class="err" id="nickErr"></div>
     <button onclick="saveNick()">Сохранить</button>
+  </div>
+</div>
+
+<div class="overlay" id="diagOverlay">
+  <div class="card">
+    <div class="role-name">Состояние связи</div>
+    <div class="team-list" id="diagBody" style="font-size:12.5px"></div>
+    <div class="row">
+      <button class="ghost" onclick="connectVideo()">Переподключить видео</button>
+      <button onclick="$('diagOverlay').style.display='none'">Закрыть</button>
+    </div>
   </div>
 </div>
 
@@ -1510,6 +1522,7 @@ function copyLink() {
 async function leave(silent) {
   if (bots.length) await dismissBots();
   try { if (!silent) await sb.rpc("leave_room", { p_room: room.room_id }); } catch(e){}
+  clearInterval(mediaGuard); mediaGuard = null;
   if (lk.room) { lk.room.disconnect(); lk.room = null; lk.connected = false; }
   if (lkMafia.room) { try { lkMafia.room.disconnect(); } catch(e){} lkMafia.room = null; lkMafia.connected = false; }
   if (channel) { try { await channel.untrack(); } catch(e){} sb.removeChannel(channel); }
@@ -1597,7 +1610,7 @@ async function connectVideo() {
         t.classList.toggle("speaking", speaking.has(uid));
       });
     });
-    attachAllTracks(); applyAV();
+    attachAllTracks(); applyAV(); startMediaGuard();
   } catch (e) {
     const denied = /permission|NotAllowed|Denied/i.test(e.name + " " + e.message);
     $("videoHint").innerHTML = denied
@@ -1625,7 +1638,13 @@ function attachTrackTo(uid, participant) {
       video.autoplay = true; video.playsInline = true; video.muted = true;
       tile.prepend(video);
     }
-    if (video.dataset.sid !== live.sid) { live.attach(video); video.dataset.sid = live.sid || "1"; }
+    const cur = video.srcObject && video.srcObject.getVideoTracks && video.srcObject.getVideoTracks()[0];
+    const want = live.mediaStreamTrack;
+    if (!cur || !want || cur.id !== want.id || cur.readyState !== "live") {
+      live.attach(video);
+      video.dataset.sid = live.sid || "1";
+      video.play && video.play().catch(() => {});
+    }
     video.style.visibility = "";
     if (ph) ph.style.display = "none";
   } else {
@@ -1662,8 +1681,50 @@ function attachAudioOnce(uid, participant) {
   audioEls.set(uid, el);
   el.muted = !audible(uid);
 }
+function showDiag() {
+  const rows = [];
+  rows.push(`<b>Комната:</b> ${lk.room ? lk.room.state : "нет"} · подключение: ${lk.connected ? "есть" : "нет"}`);
+  rows.push(`<b>Мои устройства:</b> камера ${hasCam ? "есть" : "нет"}, микрофон ${hasMic ? "есть" : "нет"}`);
+  if (lk.room) {
+    const lp = lk.room.localParticipant;
+    const myVid = [...lp.videoTrackPublications.values()][0];
+    rows.push(`<b>Моя камера:</b> ` + (myVid
+      ? `публикуется, ${myVid.isMuted ? "выключена" : "включена"}, ` +
+        `дорожка ${myVid.track && myVid.track.mediaStreamTrack ? myVid.track.mediaStreamTrack.readyState : "нет"}`
+      : "не публикуется"));
+    rows.push(`<b>Собеседники (${lk.room.remoteParticipants.size}):</b>`);
+    lk.room.remoteParticipants.forEach(p => {
+      const seat = seatsG.find(s => s.uid === p.identity) || players.find(x => x.uid === p.identity);
+      const nick = (seat && seat.nickname) || p.name || p.identity.slice(0, 6);
+      const v = [...p.videoTrackPublications.values()][0];
+      const el = document.querySelector(`#tile-${p.identity} video`);
+      const attached = el && el.srcObject && el.srcObject.getVideoTracks && el.srcObject.getVideoTracks()[0];
+      rows.push(`• ${nick}: видео ` + (!v ? "не публикует"
+        : `${v.isSubscribed ? "подписан" : "НЕ подписан"}, ${v.isMuted ? "выключено" : "включено"}, ` +
+          `дорожка ${v.track && v.track.mediaStreamTrack ? v.track.mediaStreamTrack.readyState : "нет"}, ` +
+          `на экране ${attached ? attached.readyState : "нет"}`) +
+        ` · связь ${weakLink.has(p.identity) ? "слабая" : "норм"}`);
+    });
+  }
+  $("diagBody").innerHTML = rows.join("<br>");
+  $("diagOverlay").style.display = "flex";
+}
 function muteForbiddenVoices() {
   audioEls.forEach((el, uid) => { el.muted = !audible(uid); });
+}
+let mediaGuard = null;
+function startMediaGuard() {
+  clearInterval(mediaGuard);
+  mediaGuard = setInterval(() => {
+    if (!lk.room || !lk.connected) return;
+    lk.room.remoteParticipants.forEach(p => {
+      p.videoTrackPublications.forEach(pub => {
+        // если подписка потерялась — просим её обратно
+        if (!pub.isSubscribed && pub.setSubscribed) { try { pub.setSubscribed(true); } catch (e) {} }
+      });
+    });
+    attachAllTracks();
+  }, 3000);
 }
 function attachAllTracks() {
   if (!lk.room) return;
