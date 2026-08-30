@@ -221,6 +221,9 @@
     background:linear-gradient(180deg,rgba(142,43,46,.14),rgba(142,43,46,.05)); }
   .mafia-room h4 { color:var(--blood); font:700 11px var(--sans); text-transform:uppercase;
     letter-spacing:.22em; margin-bottom:10px; }
+  .dead-room { border-color:rgba(139,151,173,.35);
+    background:linear-gradient(180deg,rgba(139,151,173,.12),rgba(139,151,173,.04)); }
+  .dead-room h4 { color:var(--muted); }
   .mafia-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
   .mafia-grid .tile { aspect-ratio:4/3; }
 
@@ -365,6 +368,10 @@
         <h4>🔫 Комната мафии — вас не слышат и не видят</h4>
         <div class="mafia-grid" id="mafiaGrid"></div>
       </div>
+      <div class="mafia-room dead-room" id="deadRoom" style="display:none">
+        <h4>☠ Кладбище — здесь вас видят и слышат только выбывшие</h4>
+        <div class="mafia-grid" id="deadGrid"></div>
+      </div>
       <div class="hint" id="videoHint"></div>
       <div class="log" id="logBox" style="display:none">
         <h4>Хроника партии</h4>
@@ -494,6 +501,7 @@ let tickTimer=null, clockTimer=null, myActions={}, hostRoles={};
 let codeShown=false, preset=null, soundOn=localStorage.getItem("sound") !== "off", lastDeaths=0;
 let micOn = localStorage.getItem("micOn") !== "0", camOn = localStorage.getItem("camOn") !== "0";
 let lkMafia = { room:null, connected:false };
+let lkDead = { room:null, connected:false };
 let online = new Set(), speaking = new Set();
 // боты живут в этой же вкладке и не отмечаются в presence — они всегда «на связи»
 function isOffline(uid) {
@@ -880,7 +888,7 @@ async function onGame(g) {
     if (g.preset && Object.keys(g.preset).length) preset = g.preset;
     await fetchSeats(); await fetchRole();
   }
-  if (phaseChanged) { myActions = {}; mafiaMarks = {}; await fetchSeats(); applyAV(); syncMafiaRoom();
+  if (phaseChanged) { myActions = {}; mafiaMarks = {}; await fetchSeats(); applyAV(); syncMafiaRoom(); syncDeadRoom();
     if (g.phase === "morning") fetchNightResult();
     sfx(g.phase === "finished" ? ({red:"winRed", black:"winBlack", maniac:"winManiac"}[g.winner] || "winRed") : g.phase);
   }
@@ -889,6 +897,7 @@ async function onGame(g) {
   lastDeaths = deaths;
   applyAV();          // право говорить меняется и при смене спикера внутри дня
   muteForbiddenVoices();
+  syncDeadRoom();
   render();
   renderLog();
 }
@@ -1113,11 +1122,14 @@ function applyAV() {
   muteForbiddenVoices();                 // чужие голоса глушим независимо от своего подключения
   if (!lk.room || !lk.connected) return;
   const allowed = speechAllowed();
-  const wantMic = !!(allowed && micOn && hasMic), wantCam = !!(camOn && hasCam);
+  const seat = mySeat();
+  const iAmOut = !!(game && !game.winner && seat && !seat.alive);   // выбывших живым не видно и не слышно
+  const wantMic = !!(allowed && micOn && hasMic), wantCam = !!(camOn && hasCam && !iAmOut);
   if (avState.mic !== wantMic) { avState.mic = wantMic; lk.room.localParticipant.setMicrophoneEnabled(wantMic).catch(()=>{}); }
   if (avState.cam !== wantCam) { avState.cam = wantCam; lk.room.localParticipant.setCameraEnabled(wantCam).catch(()=>{}); }
   if (lkMafia.room && lkMafia.connected) {
     const mMic = !!(micOn && hasMic), mCam = !!(camOn && hasCam);
+    void 0;
     if (avState.mMic !== mMic) { avState.mMic = mMic; lkMafia.room.localParticipant.setMicrophoneEnabled(mMic).catch(()=>{}); }
     if (avState.mCam !== mCam) { avState.mCam = mCam; lkMafia.room.localParticipant.setCameraEnabled(mCam).catch(()=>{}); }
   }
@@ -1156,6 +1168,68 @@ async function syncMafiaRoom() {
     lkMafia.room = null; lkMafia.connected = false;
     $("mafiaRoom").style.display = "none";
   }
+}
+// Выбывшие общаются между собой отдельно: живым их не видно и не слышно,
+// потому что в общую комнату они просто ничего не публикуют.
+async function syncDeadRoom() {
+  const seat = mySeat();
+  const need = game && !game.winner && seat && !seat.alive;
+  if (need && !lkDead.room) {
+    const { data, error } = await sb.rpc("livekit_token", { p_room: room.room_id, p_kind: "dead" });
+    if (error || !data || !data.token) return;
+    try {
+      lkDead.room = new LivekitClient.Room(roomOptions());
+      await lkDead.room.connect(data.url, data.token);
+      try { await lkDead.room.localParticipant.setMicrophoneEnabled(hasMic && micOn); } catch (e) {}
+      try { await lkDead.room.localParticipant.setCameraEnabled(hasCam && camOn); } catch (e) {}
+      lkDead.connected = true;
+      ["trackSubscribed","trackUnsubscribed","participantConnected","participantDisconnected",
+       "trackMuted","trackUnmuted"].forEach(ev => lkDead.room.on(ev, renderDeadRoom));
+      applyAV(); renderDeadRoom();
+    } catch (e) { lkDead.room = null; }
+  } else if (!need && lkDead.room) {
+    try { lkDead.room.disconnect(); } catch (e) {}
+    lkDead.room = null; lkDead.connected = false;
+    $("deadRoom").style.display = "none";
+  }
+}
+function renderDeadRoom() {
+  const box = $("deadRoom"), grid = $("deadGrid");
+  if (!lkDead.room || !lkDead.connected) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  const parts = [lkDead.room.localParticipant, ...lkDead.room.remoteParticipants.values()];
+  const wanted = parts.map(p => "dtile-" + p.identity);
+  [...grid.children].forEach(el => { if (!wanted.includes(el.id)) el.remove(); });
+  parts.forEach((p, i) => {
+    const nick = p.name || "выбывший";
+    let tile = document.getElementById("dtile-" + p.identity);
+    if (!tile) {
+      tile = document.createElement("div");
+      tile.className = "tile"; tile.id = "dtile-" + p.identity;
+      tile.innerHTML = `<div class="ph"></div><div class="name"></div>`;
+      grid.appendChild(tile);
+    }
+    if (grid.children[i] !== tile) grid.insertBefore(tile, grid.children[i] || null);
+    const letter = nick.slice(0,1).toUpperCase();
+    const ph = tile.querySelector(".ph");
+    if (ph.textContent !== letter) ph.textContent = letter;
+    const nameBox = tile.querySelector(".name");
+    const nm = nick + (p.isLocal ? " (ты)" : "");
+    if (nameBox.textContent !== nm) nameBox.textContent = nm;
+    let live = null;
+    p.videoTrackPublications.forEach(pub => {
+      if (pub.track && !pub.isMuted && pub.track.mediaStreamTrack &&
+          pub.track.mediaStreamTrack.readyState === "live") live = pub.track;
+    });
+    let video = tile.querySelector("video");
+    if (live) {
+      if (!video) { video = document.createElement("video"); video.autoplay = true; video.playsInline = true; video.muted = true; tile.prepend(video); }
+      const cur = video.srcObject && video.srcObject.getVideoTracks && video.srcObject.getVideoTracks()[0];
+      if (!cur || cur.id !== live.mediaStreamTrack.id) live.attach(video);
+      video.style.visibility = ""; ph.style.display = "none";
+    } else { if (video) video.style.visibility = "hidden"; ph.style.display = ""; }
+    if (!p.isLocal) attachAudioOnce("dead-" + p.identity, p);
+  });
 }
 function renderMafiaRoom() {
   const box = $("mafiaRoom"), grid = $("mafiaGrid");
@@ -1525,6 +1599,7 @@ async function leave(silent) {
   clearInterval(mediaGuard); mediaGuard = null;
   if (lk.room) { lk.room.disconnect(); lk.room = null; lk.connected = false; }
   if (lkMafia.room) { try { lkMafia.room.disconnect(); } catch(e){} lkMafia.room = null; lkMafia.connected = false; }
+  if (lkDead.room) { try { lkDead.room.disconnect(); } catch(e){} lkDead.room = null; lkDead.connected = false; }
   if (channel) { try { await channel.untrack(); } catch(e){} sb.removeChannel(channel); }
   clearInterval(tickTimer); clearInterval(clockTimer);
   document.body.classList.remove("in-room");
@@ -1659,6 +1734,7 @@ function attachTrackTo(uid, participant) {
 // аудиоэлемент, и один и тот же человек звучит в несколько наложенных копий — это и был «робовойс».
 function audible(key) {
   if (String(key).startsWith("mafia-")) return true;   // в ночной комнате мафия слышит своих всегда
+  if (String(key).startsWith("dead-")) return true;    // на кладбище выбывшие слышат друг друга
   return speechAllowedFor(key);
 }
 function attachAudioOnce(uid, participant) {
